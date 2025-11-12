@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meeting Room Booking System</title>
+    <link rel="icon" href="logo.png" type="image/png">
+    <link rel="apple-touch-icon" href="logo.png">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -122,7 +124,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2>Add New Booking</h2>
-                <span class="close" onclick="closeModal()">&times;</span>
+                <span class="close" onclick="attemptCloseBookingModal()">&times;</span>
             </div>
             <form id="bookingForm">
                 <div class="form-group">
@@ -155,8 +157,28 @@
                     <label for="note">Note <span class="optional-label">(optional)</span></label>
                     <textarea id="note" name="note" rows="3" placeholder="Add agenda highlights, setup instructions, or reminders"></textarea>
                 </div>
-                <button type="submit" class="submit-btn">Submit Booking</button>
+                <div class="form-actions">
+                    <button type="submit" class="submit-btn" id="submitBookingBtn">Submit Booking</button>
+                    <button type="button" class="cancel-btn" id="cancelBookingBtn" onclick="attemptCloseBookingModal()">Cancel</button>
+                    <button type="button" class="delete-btn hidden" id="deleteBookingBtn" onclick="attemptDeleteBooking()">Delete Meeting</button>
+                </div>
             </form>
+        </div>
+    </div>
+
+    <div id="discardModal" class="modal hidden">
+        <div class="modal-content confirm-modal-content">
+            <div class="modal-header confirm-modal-header">
+                <h2>Discard Changes?</h2>
+                <span class="close" onclick="closeDiscardModal(false)">&times;</span>
+            </div>
+            <div class="confirm-modal-body">
+                <p data-discard-message>Discard your changes?</p>
+            </div>
+            <div class="confirm-modal-actions">
+                <button type="button" class="cancel-btn light" data-default-label="Keep Editing" data-default-class="cancel-btn light" data-discard-cancel>Keep Editing</button>
+                <button type="button" class="submit-btn destructive" data-default-label="Discard" data-default-class="submit-btn destructive" data-discard-confirm>Discard</button>
+            </div>
         </div>
     </div>
 
