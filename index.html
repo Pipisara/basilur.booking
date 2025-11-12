@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Room Booking System</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="header-brand">
+                <img src="logo.png" alt="Company Logo" class="logo">
+                <h1>Meeting Room Booking System</h1>
+            </div>
+            <div class="global-clock" data-clock="global">--</div>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="tabs">
+            <div class="tabs-header">
+                <button class="tab-button" data-tab="roomA">Room A</button>
+                <button class="tab-button" data-tab="roomB">Room B</button>
+                <button class="tab-button" data-tab="roomC">Room C</button>
+                <button class="tab-button" data-tab="allRooms">All Rooms</button>
+            </div>
+
+            <div class="tab-content" id="tab-roomA">
+                <div class="room-panel" data-room="A">
+                    <div class="panel-header room-a-header">
+                        <div class="panel-title">
+                            <h2>Room A</h2>
+                            <span class="panel-clock" data-clock="roomA">--</span>
+                        </div>
+                        <button class="add-booking-btn" onclick="openModal('A')">+ Add Booking</button>
+                    </div>
+                    <div class="bookings-list" id="roomA-bookings">
+                        <p class="loading">Loading bookings...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-roomB">
+                <div class="room-panel" data-room="B">
+                    <div class="panel-header room-b-header">
+                        <div class="panel-title">
+                            <h2>Room B</h2>
+                            <span class="panel-clock" data-clock="roomB">--</span>
+                        </div>
+                        <button class="add-booking-btn" onclick="openModal('B')">+ Add Booking</button>
+                    </div>
+                    <div class="bookings-list" id="roomB-bookings">
+                        <p class="loading">Loading bookings...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-roomC">
+                <div class="room-panel" data-room="C">
+                    <div class="panel-header room-c-header">
+                        <div class="panel-title">
+                            <h2>Room C</h2>
+                            <span class="panel-clock" data-clock="roomC">--</span>
+                        </div>
+                        <button class="add-booking-btn" onclick="openModal('C')">+ Add Booking</button>
+                    </div>
+                    <div class="bookings-list" id="roomC-bookings">
+                        <p class="loading">Loading bookings...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-allRooms">
+                <div class="room-panel all-rooms-panel">
+                    <div class="panel-header all-rooms-header">
+                        <div class="panel-title">
+                            <h2>All Rooms</h2>
+                            <span class="panel-clock" data-clock="allRooms">--</span>
+                        </div>
+                        <button class="refresh-btn" onclick="loadBookings()">↻ Refresh</button>
+                    </div>
+                    <div class="now-running hidden" id="nowRunningBox">
+                        <h3>Now Running</h3>
+                        <div class="now-running-content" id="nowRunningContent"></div>
+                    </div>
+                    <div class="bookings-list" id="all-bookings">
+                        <p class="loading">Loading bookings...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Authorization Modal -->
+    <div id="authModal" class="modal">
+        <div class="modal-content auth-modal-content">
+            <div class="modal-header">
+                <h2>Authorize Access</h2>
+                <span class="close" onclick="closeAuthModal()">&times;</span>
+            </div>
+            <form id="authForm" class="modal-form">
+                <div class="form-group">
+                    <label for="authName">Name</label>
+                    <input type="text" id="authName" name="authName" required placeholder="Enter your name">
+                </div>
+                <div class="form-group">
+                    <label for="authCode">Access Code</label>
+                    <input type="password" id="authCode" name="authCode" required placeholder="Enter access code">
+                </div>
+                <p id="authError" class="auth-error" role="alert"></p>
+                <button type="submit" class="submit-btn authorize-btn">Authorize</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Booking Modal -->
+    <div id="bookingModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add New Booking</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <form id="bookingForm">
+                <div class="form-group">
+                    <label for="room">Room</label>
+                    <input type="text" id="room" name="room" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="title">Meeting Title</label>
+                    <input type="text" id="title" name="title" required placeholder="Enter meeting title">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="startTime">Start Time</label>
+                        <input type="datetime-local" id="startTime" name="startTime" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="endTime">End Time</label>
+                        <input type="datetime-local" id="endTime" name="endTime" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="bookedBy">Your Name</label>
+                    <input type="text" id="bookedBy" name="bookedBy" required placeholder="Enter your name">
+                </div>
+                <div class="form-group">
+                    <label for="accessCode">Access Code</label>
+                    <input type="password" id="accessCode" name="accessCode" required placeholder="Enter access code">
+                </div>
+                <div class="form-group">
+                    <label for="note">Note <span class="optional-label">(optional)</span></label>
+                    <textarea id="note" name="note" rows="3" placeholder="Add agenda highlights, setup instructions, or reminders"></textarea>
+                </div>
+                <button type="submit" class="submit-btn">Submit Booking</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="users.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
