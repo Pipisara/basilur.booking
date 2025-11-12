@@ -1,6 +1,6 @@
 // Configuration - Replace with your Google Apps Script Web App URLs
-const GET_URL = 'https://script.google.com/macros/s/AKfycbx4wIeLRn_qEfDS52SEJ22W5_9nz51Zw5S6KvG1JyQOO292vw6ha9uQcUa81rWQ_I3K/exec';
-const POST_URL = 'https://script.google.com/macros/s/AKfycbx4wIeLRn_qEfDS52SEJ22W5_9nz51Zw5S6KvG1JyQOO292vw6ha9uQcUa81rWQ_I3K/exec';
+const GET_URL = 'https://script.google.com/macros/s/AKfycbyjazSKGZNiQJ3s0KWapU7wO5cPg8gafsjE0BQZI73i1E3OK_LikkmQ14JZcc2AUOF4/exec';
+const POST_URL = 'https://script.google.com/macros/s/AKfycbyjazSKGZNiQJ3s0KWapU7wO5cPg8gafsjE0BQZI73i1E3OK_LikkmQ14JZcc2AUOF4/exec';
 const AUTH_STORAGE_KEY = 'authorized';
 
 let currentRoom = '';
@@ -11,11 +11,13 @@ const renderCache = new Map();
 const ADMIN_USERS = ['admin', 'Admin', 'Administrator', 'Manager'];
 let editingBookingId = null;
 let editingBookingOriginal = null;
+let pendingDiscardAction = null;
 
 // Load bookings when page loads
 document.addEventListener('DOMContentLoaded', () => {
     initializeTabs();
     initializeBookingCardActions();
+    initializeDiscardModal();
     startRealTimeUpdates();
     loadBookings();
     // Refresh bookings every 30 seconds
@@ -222,6 +224,28 @@ function setActiveTab(tabKey) {
 
 function initializeBookingCardActions() {
     document.addEventListener('click', handleBookingCardAction);
+}
+
+function initializeDiscardModal() {
+    const discardModal = document.getElementById('discardModal');
+    if (!discardModal) {
+        return;
+    }
+
+    const cancelBtn = discardModal.querySelector('[data-discard-cancel]');
+    const confirmBtn = discardModal.querySelector('[data-discard-confirm]');
+
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            closeDiscardModal(false);
+        });
+    }
+
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', () => {
+            closeDiscardModal(true);
+        });
+    }
 }
 
 function handleBookingCardAction(event) {
@@ -567,6 +591,244 @@ function padNumber(value) {
     return String(value).padStart(2, '0');
 }
 
+function getBookingFormSnapshot() {
+    const form = document.getElementById('bookingForm');
+    if (!form) {
+        return {};
+    }
+
+    const getValue = (id) => {
+        const element = document.getElementById(id);
+        return element ? element.value : '';
+    };
+
+    return {
+        mode: form.dataset.mode || 'create',
+        room: getValue('room'),
+        title: getValue('title'),
+        start: getValue('startTime'),
+        end: getValue('endTime'),
+        bookedBy: getValue('bookedBy'),
+        note: getValue('note'),
+        accessCode: getValue('accessCode')
+    };
+}
+
+function recordBookingFormInitialState() {
+    const form = document.getElementById('bookingForm');
+    if (!form) {
+        return;
+    }
+
+    const snapshot = JSON.stringify(getBookingFormSnapshot());
+    form.dataset.initialState = snapshot;
+}
+
+function hasBookingFormChanges() {
+    const form = document.getElementById('bookingForm');
+    if (!form) {
+        return false;
+    }
+
+    const initialState = form.dataset.initialState;
+    if (!initialState) {
+        return true;
+    }
+
+    try {
+        const currentState = JSON.stringify(getBookingFormSnapshot());
+        return currentState !== initialState;
+    } catch (error) {
+        console.warn('Unable to compare booking form state:', error);
+        return true;
+    }
+}
+
+function isBookingModalOpen() {
+    const bookingModal = document.getElementById('bookingModal');
+    return Boolean(bookingModal && bookingModal.style.display === 'block');
+}
+
+function attemptCloseBookingModal() {
+    if (!isBookingModalOpen()) {
+        return;
+    }
+
+    const hasChanges = hasBookingFormChanges();
+    const message = hasChanges
+        ? 'Discard your changes to this booking?'
+        : 'Close the booking form without saving?';
+
+    openDiscardModal({
+        message,
+        cancelLabel: 'Keep Editing',
+        confirmLabel: hasChanges ? 'Discard Changes' : 'Close Form',
+        confirmTone: hasChanges ? 'destructive' : 'accent',
+        onConfirm: () => {
+            closeModal();
+        }
+    });
+}
+
+function openDiscardModal(options = {}) {
+    const discardModal = document.getElementById('discardModal');
+    if (!discardModal) {
+        if (typeof options.onConfirm === 'function') {
+            options.onConfirm();
+        }
+        return;
+    }
+
+    const messageEl = discardModal.querySelector('[data-discard-message]');
+    if (messageEl) {
+        messageEl.textContent = options.message || 'Discard changes?';
+    }
+
+    const cancelBtn = discardModal.querySelector('[data-discard-cancel]');
+    const confirmBtn = discardModal.querySelector('[data-discard-confirm]');
+
+    if (cancelBtn) {
+        if (!cancelBtn.dataset.defaultLabel) {
+            cancelBtn.dataset.defaultLabel = cancelBtn.textContent.trim();
+        }
+        if (!cancelBtn.dataset.defaultClass) {
+            cancelBtn.dataset.defaultClass = cancelBtn.className;
+        }
+        cancelBtn.textContent = options.cancelLabel || cancelBtn.dataset.defaultLabel || 'Keep Editing';
+        cancelBtn.className = cancelBtn.dataset.defaultClass || cancelBtn.className;
+    }
+
+    if (confirmBtn) {
+        if (!confirmBtn.dataset.defaultLabel) {
+            confirmBtn.dataset.defaultLabel = confirmBtn.textContent.trim();
+        }
+        if (!confirmBtn.dataset.defaultClass) {
+            confirmBtn.dataset.defaultClass = confirmBtn.className;
+        }
+        confirmBtn.textContent = options.confirmLabel || confirmBtn.dataset.defaultLabel || 'Discard';
+
+        const tone = options.confirmTone || 'destructive';
+        if (tone === 'accent') {
+            confirmBtn.className = 'submit-btn accent';
+        } else {
+            confirmBtn.className = 'submit-btn destructive';
+        }
+    }
+
+    discardModal.classList.remove('hidden');
+    discardModal.style.display = 'block';
+    pendingDiscardAction = typeof options.onConfirm === 'function' ? options.onConfirm : null;
+
+    const focusTarget = discardModal.querySelector('[data-discard-confirm]');
+    if (focusTarget) {
+        requestAnimationFrame(() => {
+            focusTarget.focus();
+        });
+    }
+}
+
+function closeDiscardModal(shouldConfirm = false) {
+    const discardModal = document.getElementById('discardModal');
+    if (!discardModal) {
+        return;
+    }
+
+    discardModal.style.display = 'none';
+    discardModal.classList.add('hidden');
+
+    const cancelBtn = discardModal.querySelector('[data-discard-cancel]');
+    const confirmBtn = discardModal.querySelector('[data-discard-confirm]');
+
+    if (cancelBtn) {
+        if (cancelBtn.dataset.defaultLabel) {
+            cancelBtn.textContent = cancelBtn.dataset.defaultLabel;
+        }
+        if (cancelBtn.dataset.defaultClass) {
+            cancelBtn.className = cancelBtn.dataset.defaultClass;
+        }
+    }
+
+    if (confirmBtn) {
+        if (confirmBtn.dataset.defaultLabel) {
+            confirmBtn.textContent = confirmBtn.dataset.defaultLabel;
+        }
+        if (confirmBtn.dataset.defaultClass) {
+            confirmBtn.className = confirmBtn.dataset.defaultClass;
+        }
+    }
+
+    const action = pendingDiscardAction;
+    pendingDiscardAction = null;
+
+    if (shouldConfirm && typeof action === 'function') {
+        action();
+    }
+}
+
+function attemptDeleteBooking() {
+    const bookingForm = document.getElementById('bookingForm');
+    if (!bookingForm || bookingForm.dataset.mode !== 'edit') {
+        return;
+    }
+
+    const bookingId = bookingForm.dataset.bookingId;
+    const booking = editingBookingOriginal || findBookingById(bookingId);
+
+    if (!booking) {
+        alert('Unable to locate this booking. Please refresh and try again.');
+        return;
+    }
+
+    if (!canEditBooking(booking)) {
+        alert('You are not permitted to delete this booking.');
+        return;
+    }
+
+    openDiscardModal({
+        message: 'Delete this meeting? This action cannot be undone.',
+        cancelLabel: 'Keep Meeting',
+        confirmLabel: 'Delete Meeting',
+        confirmTone: 'destructive',
+        onConfirm: () => performDeleteBooking(booking)
+    });
+}
+
+async function performDeleteBooking(booking) {
+    const sessionUser = getAuthorizedUser();
+    const payload = {
+        action: 'delete',
+        id: booking.id,
+        room: booking.room,
+        roomKey: booking.roomKey || extractRoomKey(booking.room),
+        title: booking.title,
+        start: booking.start,
+        end: booking.end,
+        bookedBy: booking.bookedBy,
+        note: booking.note || '',
+        deletedBy: sessionUser || booking.bookedBy || ''
+    };
+
+    try {
+        await fetch(POST_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload)
+        });
+
+        alert('Meeting deleted successfully.');
+        closeModal();
+        setTimeout(() => {
+            loadBookings();
+        }, 1200);
+    } catch (error) {
+        console.error('Error deleting booking:', error);
+        alert('Failed to delete meeting. Please try again.');
+    }
+}
+
 // Authorization helpers
 function isAuthorized() {
     return sessionStorage.getItem(AUTH_STORAGE_KEY) === 'true';
@@ -627,6 +889,11 @@ function showBookingModal(room, options = {}) {
     bookingForm.dataset.mode = mode;
     bookingForm.dataset.bookingId = booking && booking.id ? String(booking.id) : '';
 
+    const modalTitle = bookingModal.querySelector('.modal-header h2');
+    if (modalTitle) {
+        modalTitle.textContent = mode === 'edit' ? 'Edit Booking' : 'Add New Booking';
+    }
+
     const roomField = document.getElementById('room');
     const titleField = document.getElementById('title');
     const startField = document.getElementById('startTime');
@@ -634,6 +901,8 @@ function showBookingModal(room, options = {}) {
     const bookedByField = document.getElementById('bookedBy');
     const accessCodeField = document.getElementById('accessCode');
     const noteField = document.getElementById('note');
+    const submitButton = document.getElementById('submitBookingBtn');
+    const deleteButton = document.getElementById('deleteBookingBtn');
 
     roomField.value = roomLabel;
 
@@ -659,7 +928,15 @@ function showBookingModal(room, options = {}) {
     }
 
     accessCodeField.value = '';
+    if (submitButton) {
+        submitButton.textContent = mode === 'edit' ? 'Save Changes' : 'Submit Booking';
+    }
+    if (deleteButton) {
+        deleteButton.classList.toggle('hidden', mode !== 'edit');
+    }
     bookingModal.style.display = 'block';
+    pendingDiscardAction = null;
+    recordBookingFormInitialState();
 
     requestAnimationFrame(() => {
         if (titleField) {
@@ -674,6 +951,8 @@ function closeModal() {
     const bookingForm = document.getElementById('bookingForm');
     const accessCodeField = document.getElementById('accessCode');
 
+    closeDiscardModal(false);
+
     if (bookingModal) {
         bookingModal.style.display = 'none';
     }
@@ -682,6 +961,7 @@ function closeModal() {
         bookingForm.reset();
         bookingForm.dataset.mode = 'create';
         bookingForm.dataset.bookingId = '';
+        delete bookingForm.dataset.initialState;
     }
 
     if (accessCodeField) {
@@ -693,19 +973,25 @@ function closeModal() {
     editingBookingOriginal = null;
     currentRoom = '';
     pendingRoom = '';
+    pendingDiscardAction = null;
 }
 
 // Close modals when clicking outside
 window.onclick = function(event) {
     const modal = document.getElementById('bookingModal');
     const authModal = document.getElementById('authModal');
+    const discardModal = document.getElementById('discardModal');
 
     if (event.target === modal) {
-        closeModal();
+        attemptCloseBookingModal();
     }
 
     if (event.target === authModal) {
         closeAuthModal();
+    }
+
+    if (event.target === discardModal) {
+        closeDiscardModal(false);
     }
 }
 
