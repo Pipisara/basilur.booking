@@ -13,17 +13,36 @@
  */
 function doGet(e) {
   try {
+    const action = e && e.parameter && e.parameter.action ? e.parameter.action : 'bookings';
+    if (action === 'auth') {
+      const name = e.parameter && e.parameter.name ? e.parameter.name : '';
+      const accessCode = e.parameter && e.parameter.accessCode ? e.parameter.accessCode : '';
+      const usersSheet = getOrCreateUsersSheet();
+      const usersData = usersSheet.getDataRange().getValues();
+      let found = null;
+      for (let i = 1; i < usersData.length; i++) {
+        const row = usersData[i];
+        if (row[0] && String(row[0]).trim() === String(name).trim() && String(row[1]).trim() === String(accessCode).trim()) {
+          found = { name: row[0], email: row[2] || '', role: row[3] || 'user' };
+          break;
+        }
+      }
+      if (found) {
+        return ContentService
+          .createTextOutput(JSON.stringify({ status: 'success', user: found }))
+          .setMimeType(ContentService.MimeType.JSON);
+      } else {
+        return ContentService
+          .createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid credentials' }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
     const sheet = getOrCreateBookingsSheet();
     const data = sheet.getDataRange().getValues();
     const bookings = [];
-    
-    // Skip header row (index 0), process all booking rows
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
-      
-      // Skip empty rows
       if (!row[0]) continue;
-      
       bookings.push({
         id: row[0] || '',
         room: row[1] || '',
@@ -39,20 +58,14 @@ function doGet(e) {
         updatedAt: row[11] || ''
       });
     }
-    
-    Logger.log(`doGet: Returning ${bookings.length} bookings`);
-    
     return ContentService
       .createTextOutput(JSON.stringify(bookings))
       .setMimeType(ContentService.MimeType.JSON);
-      
   } catch (error) {
-    Logger.log(`doGet Error: ${error.toString()}`);
-    
     return ContentService
       .createTextOutput(JSON.stringify({
         error: error.toString(),
-        message: 'Failed to retrieve bookings'
+        message: 'Failed to retrieve data'
       }))
       .setMimeType(ContentService.MimeType.JSON);
   }
@@ -91,6 +104,28 @@ function doPost(e) {
       }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+function getOrCreateUsersSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('Users');
+  if (!sheet) {
+    sheet = ss.insertSheet('Users');
+    const headers = ['Name', 'Access Code', 'Email', 'Role', 'Created At', 'Updated At'];
+    sheet.appendRow(headers);
+    const headerRange = sheet.getRange(1, 1, 1, headers.length);
+    headerRange.setFontWeight('bold');
+    headerRange.setBackground('#34a853');
+    headerRange.setFontColor('#ffffff');
+    sheet.setColumnWidth(1, 200);
+    sheet.setColumnWidth(2, 150);
+    sheet.setColumnWidth(3, 250);
+    sheet.setColumnWidth(4, 120);
+    sheet.setColumnWidth(5, 160);
+    sheet.setColumnWidth(6, 160);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
 }
 
 /**

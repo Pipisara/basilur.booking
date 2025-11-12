@@ -4,89 +4,156 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meeting Room Booking System</title>
-    <link rel="icon" href="logo.png" type="image/png">
-    <link rel="apple-touch-icon" href="logo.png">
-    <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header>
         <div class="header-content">
             <div class="header-brand">
-                <img src="logo.png" alt="Company Logo" class="logo">
                 <h1>Meeting Room Booking System</h1>
             </div>
-            <div class="global-clock" data-clock="global">--</div>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <div class="global-clock" data-clock="global">--</div>
+                <div id="userInfo" class="user-info hidden">
+                    <span id="userName"></span>
+                    <button class="logout-btn" onclick="logout()">Logout</button>
+                </div>
+                <button id="loginBtn" class="login-btn">Login</button>
+            </div>
         </div>
     </header>
 
     <main class="container">
         <div class="tabs">
             <div class="tabs-header">
-                <button class="tab-button" data-tab="roomA">Room A</button>
+                <button class="tab-button active" data-tab="roomA">Room A</button>
                 <button class="tab-button" data-tab="roomB">Room B</button>
                 <button class="tab-button" data-tab="roomC">Room C</button>
                 <button class="tab-button" data-tab="allRooms">All Rooms</button>
             </div>
 
-            <div class="tab-content" id="tab-roomA">
-                <div class="room-panel" data-room="A">
-                    <div class="panel-header room-a-header">
+            <!-- Room A Tab -->
+            <div class="tab-content active" id="tab-roomA">
+                <div class="room-panel">
+                    <div class="panel-header">
                         <div class="panel-title">
                             <h2>Room A</h2>
                             <span class="panel-clock" data-clock="roomA">--</span>
                         </div>
-                        <button class="add-booking-btn" onclick="openModal('A')">+ Add Booking</button>
+                        <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                            <div class="view-toggle">
+                                <button class="view-toggle-btn active" data-view="summary" data-room="A">Summary</button>
+                                <button class="view-toggle-btn" data-view="calendar" data-room="A">Calendar</button>
+                            </div>
+                            <button class="add-booking-btn" onclick="openModal('A')">+ Add Booking</button>
+                        </div>
                     </div>
-                    <div class="bookings-list" id="roomA-bookings">
-                        <p class="loading">Loading bookings...</p>
+                    
+                    <div class="summary-view active" data-room="A">
+                        <div class="bookings-list" id="roomA-bookings">
+                            <p class="loading">Loading bookings...</p>
+                        </div>
+                    </div>
+                    
+                    <div class="calendar-view" data-room="A">
+                        <div class="calendar-controls">
+                            <div class="week-navigation">
+                                <button class="week-nav-btn" data-action="prev-week" data-room="A">← Previous</button>
+                                <span class="week-range" data-room="A">--</span>
+                                <button class="week-nav-btn" data-action="next-week" data-room="A">Next →</button>
+                            </div>
+                            <button class="week-nav-btn" data-action="today" data-room="A">Today</button>
+                        </div>
+                        <div class="calendar-grid" data-room="A" id="calendarA"></div>
                     </div>
                 </div>
             </div>
 
+            <!-- Room B Tab -->
             <div class="tab-content" id="tab-roomB">
-                <div class="room-panel" data-room="B">
-                    <div class="panel-header room-b-header">
+                <div class="room-panel">
+                    <div class="panel-header">
                         <div class="panel-title">
                             <h2>Room B</h2>
                             <span class="panel-clock" data-clock="roomB">--</span>
                         </div>
-                        <button class="add-booking-btn" onclick="openModal('B')">+ Add Booking</button>
+                        <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                            <div class="view-toggle">
+                                <button class="view-toggle-btn active" data-view="summary" data-room="B">Summary</button>
+                                <button class="view-toggle-btn" data-view="calendar" data-room="B">Calendar</button>
+                            </div>
+                            <button class="add-booking-btn" onclick="openModal('B')">+ Add Booking</button>
+                        </div>
                     </div>
-                    <div class="bookings-list" id="roomB-bookings">
-                        <p class="loading">Loading bookings...</p>
+                    
+                    <div class="summary-view active" data-room="B">
+                        <div class="bookings-list" id="roomB-bookings">
+                            <p class="loading">Loading bookings...</p>
+                        </div>
+                    </div>
+                    
+                    <div class="calendar-view" data-room="B">
+                        <div class="calendar-controls">
+                            <div class="week-navigation">
+                                <button class="week-nav-btn" data-action="prev-week" data-room="B">← Previous</button>
+                                <span class="week-range" data-room="B">--</span>
+                                <button class="week-nav-btn" data-action="next-week" data-room="B">Next →</button>
+                            </div>
+                            <button class="week-nav-btn" data-action="today" data-room="B">Today</button>
+                        </div>
+                        <div class="calendar-grid" data-room="B" id="calendarB"></div>
                     </div>
                 </div>
             </div>
 
+            <!-- Room C Tab -->
             <div class="tab-content" id="tab-roomC">
-                <div class="room-panel" data-room="C">
-                    <div class="panel-header room-c-header">
+                <div class="room-panel">
+                    <div class="panel-header">
                         <div class="panel-title">
                             <h2>Room C</h2>
                             <span class="panel-clock" data-clock="roomC">--</span>
                         </div>
-                        <button class="add-booking-btn" onclick="openModal('C')">+ Add Booking</button>
+                        <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                            <div class="view-toggle">
+                                <button class="view-toggle-btn active" data-view="summary" data-room="C">Summary</button>
+                                <button class="view-toggle-btn" data-view="calendar" data-room="C">Calendar</button>
+                            </div>
+                            <button class="add-booking-btn" onclick="openModal('C')">+ Add Booking</button>
+                        </div>
                     </div>
-                    <div class="bookings-list" id="roomC-bookings">
-                        <p class="loading">Loading bookings...</p>
+                    
+                    <div class="summary-view active" data-room="C">
+                        <div class="bookings-list" id="roomC-bookings">
+                            <p class="loading">Loading bookings...</p>
+                        </div>
+                    </div>
+                    
+                    <div class="calendar-view" data-room="C">
+                        <div class="calendar-controls">
+                            <div class="week-navigation">
+                                <button class="week-nav-btn" data-action="prev-week" data-room="C">← Previous</button>
+                                <span class="week-range" data-room="C">--</span>
+                                <button class="week-nav-btn" data-action="next-week" data-room="C">Next →</button>
+                            </div>
+                            <button class="week-nav-btn" data-action="today" data-room="C">Today</button>
+                        </div>
+                        <div class="calendar-grid" data-room="C" id="calendarC"></div>
                     </div>
                 </div>
             </div>
 
+            <!-- All Rooms Tab -->
             <div class="tab-content" id="tab-allRooms">
-                <div class="room-panel all-rooms-panel">
-                    <div class="panel-header all-rooms-header">
+                <div class="room-panel">
+                    <div class="panel-header">
                         <div class="panel-title">
                             <h2>All Rooms</h2>
                             <span class="panel-clock" data-clock="allRooms">--</span>
                         </div>
-                    </div>
-                    <div class="now-running hidden" id="nowRunningBox">
-                        <h3>Now Running</h3>
-                        <div class="now-running-content" id="nowRunningContent"></div>
                     </div>
                     <div class="bookings-list" id="all-bookings">
                         <p class="loading">Loading bookings...</p>
@@ -96,24 +163,23 @@
         </div>
     </main>
 
-    <!-- Authorization Modal -->
-    <div id="authModal" class="modal">
-        <div class="modal-content auth-modal-content">
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
             <div class="modal-header">
-                <h2>Authorize Access</h2>
-                <span class="close" onclick="closeAuthModal()">&times;</span>
+                <h2>Login</h2>
+                <span class="close" onclick="closeLoginModal()">&times;</span>
             </div>
-            <form id="authForm" class="modal-form">
+            <form id="loginForm">
                 <div class="form-group">
-                    <label for="authName">Name</label>
-                    <input type="text" id="authName" name="authName" required placeholder="Enter your name">
+                    <label for="loginName">Name</label>
+                    <input type="text" id="loginName" name="loginName" required placeholder="Enter your name">
                 </div>
                 <div class="form-group">
-                    <label for="authCode">Access Code</label>
-                    <input type="password" id="authCode" name="authCode" required placeholder="Enter access code">
+                    <label for="loginPassword">Access Code</label>
+                    <input type="password" id="loginPassword" name="loginPassword" required placeholder="Enter access code">
                 </div>
-                <p id="authError" class="auth-error" role="alert"></p>
-                <button type="submit" class="submit-btn authorize-btn">Authorize</button>
+                <button type="submit" class="submit-btn">Login</button>
             </form>
         </div>
     </div>
@@ -123,7 +189,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2>Add New Booking</h2>
-                <span class="close" onclick="attemptCloseBookingModal()">&times;</span>
+                <span class="close" onclick="closeModal()">&times;</span>
             </div>
             <form id="bookingForm">
                 <div class="form-group">
@@ -145,39 +211,22 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="bookedBy">Your Name</label>
-                    <input type="text" id="bookedBy" name="bookedBy" required placeholder="Enter your name">
+                    <label for="note">Note <span style="color: #888; font-size: 0.85rem;">(optional)</span></label>
+                    <textarea id="note" name="note" placeholder="Add agenda or notes"></textarea>
                 </div>
-                <div class="form-group">
-                    <label for="accessCode">Access Code</label>
-                    <input type="password" id="accessCode" name="accessCode" required placeholder="Enter access code">
-                </div>
-                <div class="form-group">
-                    <label for="note">Note <span class="optional-label">(optional)</span></label>
-                    <textarea id="note" name="note" rows="3" placeholder="Add agenda highlights, setup instructions, or reminders"></textarea>
-                </div>
-                <div class="form-actions">
-                    <button type="submit" class="submit-btn" id="submitBookingBtn">Submit Booking</button>
-                    <button type="button" class="cancel-btn" id="cancelBookingBtn" onclick="attemptCloseBookingModal()">Cancel</button>
-                    <button type="button" class="delete-btn hidden" id="deleteBookingBtn" onclick="attemptDeleteBooking()">Delete Meeting</button>
-                </div>
+                <button type="submit" class="submit-btn">Submit Booking</button>
             </form>
         </div>
     </div>
 
-    <div id="discardModal" class="modal hidden">
-        <div class="modal-content confirm-modal-content">
-            <div class="modal-header confirm-modal-header">
-                <h2>Discard Changes?</h2>
-                <span class="close" onclick="closeDiscardModal(false)">&times;</span>
+    <!-- Event Details Modal -->
+    <div id="eventModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Event Details</h2>
+                <span class="close" onclick="closeEventModal()">&times;</span>
             </div>
-            <div class="confirm-modal-body">
-                <p data-discard-message>Discard your changes?</p>
-            </div>
-            <div class="confirm-modal-actions">
-                <button type="button" class="cancel-btn light" data-default-label="Keep Editing" data-default-class="cancel-btn light" data-discard-cancel>Keep Editing</button>
-                <button type="button" class="submit-btn destructive" data-default-label="Discard" data-default-class="submit-btn destructive" data-discard-confirm>Discard</button>
-            </div>
+            <div id="eventDetails"></div>
         </div>
     </div>
 

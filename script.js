@@ -1,1182 +1,977 @@
-// Configuration - Replace with your Google Apps Script Web App URLs
-const GET_URL = 'https://script.google.com/macros/s/AKfycbyjazSKGZNiQJ3s0KWapU7wO5cPg8gafsjE0BQZI73i1E3OK_LikkmQ14JZcc2AUOF4/exec';
-const POST_URL = 'https://script.google.com/macros/s/AKfycbyjazSKGZNiQJ3s0KWapU7wO5cPg8gafsjE0BQZI73i1E3OK_LikkmQ14JZcc2AUOF4/exec';
-const AUTH_STORAGE_KEY = 'authorized';
+// Configuration
+const GET_URL = 'https://script.google.com/macros/s/AKfycbxgx-yy7fk2-vuSCBcmI5Ug8SLXh2MS-EZ2SO_wILwPNpD0J3DXkM6RdogS5GYmOsDF/exec';
+const POST_URL = 'https://script.google.com/macros/s/AKfycbxgx-yy7fk2-vuSCBcmI5Ug8SLXh2MS-EZ2SO_wILwPNpD0J3DXkM6RdogS5GYmOsDF/exec';
 
-let currentRoom = '';
 let allBookings = [];
-let pendingRoom = '';
-let displayIntervalId = null;
-const renderCache = new Map();
-const ADMIN_USERS = ['admin', 'Admin', 'Administrator', 'Manager'];
-let editingBookingId = null;
-let editingBookingOriginal = null;
-let pendingDiscardAction = null;
+let currentWeekStart = {};
+let currentUser = null;
+let currentEventId = null;
 
-// Load bookings when page loads
+// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     initializeTabs();
-    initializeBookingCardActions();
-    initializeDiscardModal();
-    startRealTimeUpdates();
+    initializeViewToggles();
+    initializeWeekNavigation();
+    initializeCalendarClicks();
+    initializeLogin();
+    startClock();
+    checkLoginStatus();
+    initializeNoteAutosize();
     loadBookings();
-    // Refresh bookings every 30 seconds
     setInterval(loadBookings, 30000);
 });
 
-function startRealTimeUpdates() {
-    if (displayIntervalId) {
-        return;
-    }
-
-    updateTimeAndDisplays();
-    displayIntervalId = setInterval(updateTimeAndDisplays, 1000);
-}
-
-function updateTimeAndDisplays() {
-    const now = new Date();
-    updateClockDisplays(now);
-    displayBookings(now);
-}
-
-function updateClockDisplays(now) {
-    const clockElements = document.querySelectorAll('[data-clock]');
-
-    clockElements.forEach(element => {
-        const target = element.dataset.clock || 'global';
-        element.textContent = formatClockForTarget(now, target);
+function openDialog(opts) {
+    const existing = document.getElementById('appNotifyOverlay');
+    const overlay = existing || document.createElement('div');
+    overlay.id = 'appNotifyOverlay';
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.right = '0';
+    overlay.style.bottom = '0';
+    overlay.style.background = 'rgba(0,0,0,0.35)';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.zIndex = '1000';
+    const box = document.createElement('div');
+    box.style.maxWidth = '440px';
+    box.style.width = '90%';
+    box.style.borderRadius = '10px';
+    box.style.boxShadow = '0 10px 30px rgba(0,0,0,0.2)';
+    box.style.background = '#fff';
+    box.style.overflow = 'hidden';
+    const header = document.createElement('div');
+    header.style.padding = '14px 18px';
+    header.style.fontWeight = '600';
+    header.style.color = '#fff';
+    const type = opts.type || 'info';
+    header.style.background = type === 'success' ? '#00bcd4' : type === 'error' ? '#c62828' : type === 'warning' ? '#ed6c02' : '#1976d2';
+    header.textContent = type === 'success' ? 'Success' : type === 'error' ? 'Error' : type === 'warning' ? 'Warning' : 'Notice';
+    const body = document.createElement('div');
+    body.style.padding = '18px';
+    body.style.color = '#333';
+    body.style.fontSize = '15px';
+    body.textContent = opts.message || '';
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '10px';
+    actions.style.justifyContent = 'flex-end';
+    actions.style.padding = '12px 18px 18px';
+    const buttons = opts.buttons && opts.buttons.length ? opts.buttons : [{ label: 'OK', value: true, variant: 'primary' }];
+    return new Promise(resolve => {
+        buttons.forEach(b => {
+            const btn = document.createElement('button');
+            btn.textContent = b.label;
+            btn.style.padding = '8px 14px';
+            btn.style.borderRadius = '6px';
+            btn.style.border = 'none';
+            btn.style.cursor = 'pointer';
+            btn.style.fontWeight = '600';
+            btn.style.background = b.variant === 'danger' ? '#c62828' : b.variant === 'secondary' ? '#e0e0e0' : '#1976d2';
+            btn.style.color = b.variant === 'secondary' ? '#333' : '#fff';
+            btn.addEventListener('click', () => {
+                document.body.removeChild(overlay);
+                resolve(b.value);
+            });
+            actions.appendChild(btn);
+        });
+        box.appendChild(header);
+        box.appendChild(body);
+        box.appendChild(actions);
+        overlay.innerHTML = '';
+        overlay.appendChild(box);
+        if (!existing) document.body.appendChild(overlay);
     });
 }
 
-function formatClockForTarget(now, target) {
-    const timeOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
-    const dateOptions = { month: 'short', day: 'numeric', year: 'numeric' };
-
-    const time = now.toLocaleTimeString('en-US', timeOptions);
-    const date = now.toLocaleDateString('en-US', dateOptions);
-
-    if (target === 'global') {
-        const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
-        return `${weekday}, ${date} • ${time}`;
-    }
-
-    return `${time} • ${date}`;
+function showPopup(message, type) {
+    return openDialog({ message, type });
 }
 
-// Load all bookings from Google Sheets
+function showConfirm(message, okLabel) {
+    return openDialog({ message, type: 'warning', buttons: [
+        { label: 'Cancel', value: false, variant: 'secondary' },
+        { label: okLabel || 'OK', value: true, variant: 'danger' }
+    ]});
+}
+
+// Authentication Functions
+function initializeLogin() {
+    document.getElementById('loginBtn').addEventListener('click', openLoginModal);
+    document.getElementById('loginForm').addEventListener('submit', handleLogin);
+}
+
+function openLoginModal() {
+    document.getElementById('loginModal').style.display = 'block';
+}
+
+function closeLoginModal() {
+    document.getElementById('loginModal').style.display = 'none';
+    document.getElementById('loginForm').reset();
+}
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const form = document.getElementById('loginForm');
+    const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.dataset.prevText = submitBtn.textContent;
+        submitBtn.textContent = 'Signing in...';
+    }
+    const name = document.getElementById('loginName').value;
+    const accessCode = document.getElementById('loginPassword').value;
+    try {
+        const url = `${GET_URL}?action=auth&name=${encodeURIComponent(name)}&accessCode=${encodeURIComponent(accessCode)}`;
+        const response = await fetch(url);
+        if (!response.ok) {
+            await showPopup('Login failed', 'error');
+            return;
+        }
+        const data = await response.json();
+        if (data && data.status === 'success' && data.user) {
+            currentUser = { name: data.user.name, role: data.user.role, email: data.user.email };
+            sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+            updateUIForLogin();
+            closeLoginModal();
+            await showPopup('Login successful', 'success');
+        } else {
+            await showPopup('Invalid name or access code', 'error');
+        }
+    } catch (err) {
+        await showPopup('Login error', 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = submitBtn.dataset.prevText || submitBtn.textContent;
+            delete submitBtn.dataset.prevText;
+        }
+    }
+}
+
+function logout() {
+    currentUser = null;
+    sessionStorage.removeItem('currentUser');
+    updateUIForLogin();
+    
+}
+
+function checkLoginStatus() {
+    const savedUser = sessionStorage.getItem('currentUser');
+    if (savedUser) {
+        currentUser = JSON.parse(savedUser);
+        updateUIForLogin();
+    }
+}
+
+function updateUIForLogin() {
+    const loginBtn = document.getElementById('loginBtn');
+    const userInfo = document.getElementById('userInfo');
+    const userName = document.getElementById('userName');
+    
+    if (currentUser) {
+        loginBtn.classList.add('hidden');
+        userInfo.classList.remove('hidden');
+        userName.textContent = `${currentUser.name} (${currentUser.role})`;
+    } else {
+        loginBtn.classList.remove('hidden');
+        userInfo.classList.add('hidden');
+    }
+}
+
+function canEditBooking(booking) {
+    if (!currentUser) return false;
+    if (currentUser.role === 'admin') return true;
+    return booking.bookedBy === currentUser.name;
+}
+
+// Clock Functions
+function startClock() {
+    updateClock();
+    setInterval(updateClock, 1000);
+}
+
+function updateClock() {
+    const now = new Date();
+    const clocks = document.querySelectorAll('[data-clock]');
+    
+    clocks.forEach(clock => {
+        const type = clock.dataset.clock;
+        if (type === 'global') {
+            const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
+            const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            clock.textContent = `${weekday}, ${date} • ${time}`;
+        } else {
+            const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            clock.textContent = `${time} • ${date}`;
+        }
+    });
+}
+
+// Booking Functions
 async function loadBookings() {
     try {
         const response = await fetch(GET_URL);
-        if (!response.ok) {
-            throw new Error('Failed to fetch bookings');
-        }
+        if (!response.ok) throw new Error('Failed to fetch');
         
         const data = await response.json();
         allBookings = Array.isArray(data) ? data.map(normalizeBooking) : [];
-        displayBookings(new Date());
+        displaySummaryViews();
+        refreshAllCalendars();
     } catch (error) {
         console.error('Error loading bookings:', error);
-        showError('Failed to load bookings. Please check your configuration.');
         allBookings = [];
-        updateNowRunningBox([], new Date());
     }
 }
 
-function normalizeBooking(rawBooking = {}) {
-    const safeBooking = { ...rawBooking };
-
-    const title = typeof safeBooking.title === 'string' ? safeBooking.title.trim() : '';
-    const bookedBy = typeof safeBooking.bookedBy === 'string' ? safeBooking.bookedBy.trim() : '';
-    const room = typeof safeBooking.room === 'string' ? safeBooking.room.trim() : '';
-    const roomKey = extractRoomKey(room || safeBooking.roomKey || '');
-    const roomLabel = formatRoomLabel(roomKey);
-    const noteValue = pickFirstString([
-        safeBooking.note,
-        safeBooking.notes,
-        safeBooking.Note,
-        safeBooking.Notes,
-        safeBooking.noteText,
-        safeBooking.description
-    ]);
-
-    safeBooking.title = title || 'Untitled Meeting';
-    safeBooking.bookedBy = bookedBy || 'Unknown';
-    safeBooking.room = roomLabel;
-    safeBooking.roomKey = roomKey;
-    safeBooking.start = safeBooking.start;
-    safeBooking.end = safeBooking.end;
-    safeBooking.note = noteValue;
-    safeBooking.id = deriveBookingId(safeBooking);
-
-    return safeBooking;
+function normalizeBooking(booking) {
+    return {
+        id: booking.id || Date.now(),
+        room: booking.room || 'Room A',
+        title: booking.title || 'Untitled Meeting',
+        start: booking.start,
+        end: booking.end,
+        bookedBy: booking.bookedBy || 'Unknown',
+        note: booking.note || ''
+    };
 }
 
-function pickFirstString(candidates = []) {
-    for (const value of candidates) {
-        if (typeof value === 'string') {
-            const trimmed = value.trim();
-            if (trimmed) {
-                return trimmed;
-            }
-        }
-    }
-    return '';
-}
-
-// Display bookings in respective panels
-function displayBookings(now = new Date()) {
-    if (!Array.isArray(allBookings) || allBookings.length === 0) {
-        updateNowRunningBox([], now);
-        return;
-    }
-
-    const sortedBookings = [...allBookings].sort((a, b) => new Date(a.start) - new Date(b.start));
-    
-    // Filter upcoming bookings for room panels
-    const upcomingBookings = sortedBookings.filter(booking => {
-        const endTime = new Date(booking.end);
-        return endTime > now;
-    });
-
-    // Sort by start time
-    upcomingBookings.sort((a, b) => new Date(a.start) - new Date(b.start));
-
-    // Display for each room (upcoming and running only)
-    displayRoomBookings('A', upcomingBookings.filter(b => b.room === 'Room A'), now);
-    displayRoomBookings('B', upcomingBookings.filter(b => b.room === 'Room B'), now);
-    displayRoomBookings('C', upcomingBookings.filter(b => b.room === 'Room C'), now);
-    
-    // Display all bookings
-    displayAllBookings(sortedBookings, now);
-}
-
-// Display bookings for a specific room
-function displayRoomBookings(room, bookings, now) {
-    const container = document.getElementById(`room${room}-bookings`);
-    if (!container) {
-        return;
-    }
-    
-    if (bookings.length === 0) {
-        renderIfChanged(container, '<p class="no-bookings">No upcoming bookings</p>');
-        return;
-    }
-
-    const markup = bookings.map(booking => createBookingCard(booking, { showRoom: false, now })).join('');
-    renderIfChanged(container, markup);
-}
-
-// Display all bookings
-function displayAllBookings(bookings, now) {
-    const container = document.getElementById('all-bookings');
-    if (!container) {
-        return;
-    }
-    
-    if (bookings.length === 0) {
-        renderIfChanged(container, '<p class="no-bookings">No upcoming bookings</p>');
-        updateNowRunningBox([], now);
-        return;
-    }
-
-    const markup = bookings.map(booking => createBookingCard(booking, { showRoom: true, now })).join('');
-    renderIfChanged(container, markup);
-
-    const runningBookings = bookings.filter(booking => getBookingStatus(booking, now) === 'running');
-    updateNowRunningBox(runningBookings, now);
-}
-
-// Tabs
+// Tab Functions
 function initializeTabs() {
     const buttons = document.querySelectorAll('.tab-button');
-    const contents = document.querySelectorAll('.tab-content');
-
-    if (!buttons.length || !contents.length) {
-        return;
-    }
-
     buttons.forEach(button => {
         button.addEventListener('click', () => {
-            setActiveTab(button.dataset.tab);
+            const tab = button.dataset.tab;
+            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            button.classList.add('active');
+            document.getElementById(`tab-${tab}`).classList.add('active');
         });
     });
-
-    const activeButton = Array.from(buttons).find(btn => btn.classList.contains('active'));
-    if (activeButton) {
-        setActiveTab(activeButton.dataset.tab);
-    } else {
-        setActiveTab(buttons[0].dataset.tab);
-    }
 }
 
-function setActiveTab(tabKey) {
-    const buttons = document.querySelectorAll('.tab-button');
-    const contents = document.querySelectorAll('.tab-content');
-
-    buttons.forEach(button => {
-        button.classList.toggle('active', button.dataset.tab === tabKey);
-    });
-
-    contents.forEach(content => {
-        content.classList.toggle('active', content.id === `tab-${tabKey}`);
-    });
-
-    if (tabKey === 'allRooms') {
-        loadBookings();
-    } else {
-        displayBookings(new Date());
-    }
-}
-
-function initializeBookingCardActions() {
-    document.addEventListener('click', handleBookingCardAction);
-}
-
-function initializeDiscardModal() {
-    const discardModal = document.getElementById('discardModal');
-    if (!discardModal) {
-        return;
-    }
-
-    const cancelBtn = discardModal.querySelector('[data-discard-cancel]');
-    const confirmBtn = discardModal.querySelector('[data-discard-confirm]');
-
-    if (cancelBtn) {
-        cancelBtn.addEventListener('click', () => {
-            closeDiscardModal(false);
+// View Toggle Functions
+function initializeViewToggles() {
+    const toggleButtons = document.querySelectorAll('.view-toggle-btn');
+    toggleButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const view = button.dataset.view;
+            const room = button.dataset.room;
+            
+            const container = button.closest('.room-panel');
+            container.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.remove('active'));
+            button.classList.add('active');
+            
+            const summaryView = container.querySelector('.summary-view');
+            const calendarView = container.querySelector('.calendar-view');
+            
+            if (view === 'calendar') {
+                summaryView.classList.remove('active');
+                calendarView.classList.add('active');
+                if (!currentWeekStart[room]) {
+                    currentWeekStart[room] = getWeekStart(new Date());
+                }
+                renderCalendar(room);
+            } else {
+                calendarView.classList.remove('active');
+                summaryView.classList.add('active');
+            }
         });
-    }
+    });
+}
 
-    if (confirmBtn) {
-        confirmBtn.addEventListener('click', () => {
-            closeDiscardModal(true);
+// Week Navigation Functions
+function initializeWeekNavigation() {
+    document.querySelectorAll('.week-nav-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const action = button.dataset.action;
+            const room = button.dataset.room;
+            
+            if (!currentWeekStart[room]) {
+                currentWeekStart[room] = getWeekStart(new Date());
+            }
+            
+            if (action === 'prev-week') {
+                currentWeekStart[room] = addDays(currentWeekStart[room], -7);
+            } else if (action === 'next-week') {
+                currentWeekStart[room] = addDays(currentWeekStart[room], 7);
+            } else if (action === 'today') {
+                currentWeekStart[room] = getWeekStart(new Date());
+            }
+            
+            renderCalendar(room);
         });
-    }
+    });
 }
 
-function handleBookingCardAction(event) {
-    const editButton = event.target.closest('[data-action="edit-booking"]');
-    if (!editButton) {
-        return;
-    }
-
-    event.preventDefault();
-
-    const bookingId = editButton.dataset.bookingId;
-    const booking = findBookingById(bookingId);
-
-    if (!booking) {
-        console.warn('Unable to locate booking for edit', bookingId);
-        return;
-    }
-
-    if (!isAuthorized()) {
-        const roomKey = extractRoomKey(booking.room);
-        pendingRoom = roomKey;
-        openAuthModal(roomKey);
-        return;
-    }
-
-    if (!canEditBooking(booking)) {
-        alert('You are not permitted to edit this booking.');
-        return;
-    }
-
-    openEditModal(booking);
+function initializeCalendarClicks() {
+    document.addEventListener('click', (e) => {
+        const hourCell = e.target.closest('.hour-cell');
+        if (hourCell && !e.target.closest('.calendar-booking')) {
+            const room = hourCell.dataset.room;
+            const date = hourCell.dataset.date;
+            const hour = hourCell.dataset.hour;
+            if (room && date && hour) {
+                openModalWithTime(room, date, hour);
+            }
+        }
+    });
 }
 
-function openEditModal(booking) {
-    if (!booking) {
-        return;
-    }
-
-    editingBookingId = booking.id;
-    editingBookingOriginal = { ...booking };
-
-    const roomKey = extractRoomKey(booking.room);
-    showBookingModal(roomKey, { booking, mode: 'edit' });
+function getWeekStart(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day;
+    return new Date(d.setDate(diff));
 }
 
-// Create HTML for a booking card
-function createBookingCard(booking, options = {}) {
-    const { showRoom = false, now = new Date() } = options;
-    const status = getBookingStatus(booking, now);
-    const statusLabel = getBookingStatusLabel(status);
-    const startTime = formatDateTime(booking.start);
-    const endTime = formatDateTime(booking.end);
-    const noteText = typeof booking.note === 'string' ? booking.note.trim() : '';
-    const safeTitle = escapeHtml(booking.title);
-    const safeBookedBy = escapeHtml(booking.bookedBy);
-    const safeRoom = escapeHtml(booking.room);
-    const safeNote = noteText ? escapeHtml(noteText) : '';
-    const noteMarkup = `<div class="booking-note"><strong>Note:</strong> ${safeNote || '<span class="muted">No note provided.</span>'}</div>`;
-    const canEdit = canEditBooking(booking);
-    const editButtonMarkup = canEdit
-        ? `<button type="button" class="edit-booking-btn" data-action="edit-booking" data-booking-id="${escapeHtml(String(booking.id))}" title="Edit meeting">Edit</button>`
-        : '';
+function addDays(date, days) {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
+}
 
-    return `
-        <div class="booking-card booking-status-${status}" data-status="${status}" data-booking-id="${escapeHtml(String(booking.id))}">
-            <div class="booking-card-header">
-                <h3>${safeTitle}</h3>
-                <div class="booking-card-header-actions">
-                    <span class="status-badge status-badge-${status}">${statusLabel}</span>
-                    ${editButtonMarkup}
+function formatWeekRange(weekStart) {
+    const weekEnd = addDays(weekStart, 6);
+    const startStr = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const endStr = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return `${startStr} - ${endStr}`;
+}
+
+// Calendar Rendering
+function renderCalendar(room) {
+    if (!currentWeekStart[room]) {
+        currentWeekStart[room] = getWeekStart(new Date());
+    }
+    
+    const weekStart = currentWeekStart[room];
+    const container = document.querySelector(`.calendar-grid[data-room="${room}"]`);
+    const weekRangeEl = document.querySelector(`.week-range[data-room="${room}"]`);
+    
+    if (weekRangeEl) {
+        weekRangeEl.textContent = formatWeekRange(weekStart);
+    }
+    
+    if (!container) return;
+    
+    let html = '<div class="calendar-header">';
+    html += '<div class="calendar-header-cell">Time</div>';
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    for (let i = 0; i < 7; i++) {
+        const date = addDays(weekStart, i);
+        const dateStr = date.toISOString().split('T')[0];
+        const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+        const dayNum = date.getDate();
+        const isToday = date.getTime() === today.getTime();
+        html += `<div class="calendar-header-cell${isToday ? ' today' : ''}" data-date="${dateStr}">${dayName}<br>${dayNum}</div>`;
+    }
+    html += '</div>';
+    
+    html += '<div class="calendar-body">';
+    html += '<div class="calendar-days">';
+    
+    let timeLabelsColumn = '';
+    for (let hour = 8; hour <= 19; hour++) {
+        timeLabelsColumn += `<div class="time-label" data-hour="${hour}">${formatHour(hour)}</div>`;
+    }
+    html += `<div class="time-labels-column">${timeLabelsColumn}</div>`;
+    
+    for (let day = 0; day < 7; day++) {
+        const date = addDays(weekStart, day);
+        const dateStr = date.toISOString().split('T')[0];
+        const isToday = date.getTime() === today.getTime();
+        
+        let dayColumnHtml = `<div class="day-column${isToday ? ' today' : ''}" data-room="${room}" data-date="${dateStr}">`;
+        for (let hour = 8; hour <= 19; hour++) {
+            dayColumnHtml += `<div class="hour-cell" data-room="${room}" data-date="${dateStr}" data-hour="${hour}"></div>`;
+        }
+        
+        const roomLabel = `Room ${room}`;
+        const visibleStart = new Date(date);
+        visibleStart.setHours(8, 0, 0, 0);
+        const visibleEnd = new Date(date);
+        visibleEnd.setHours(20, 0, 0, 0);
+        
+        const dayBookings = allBookings.filter(b => {
+            if (b.room !== roomLabel) return false;
+            const start = new Date(b.start);
+            const end = new Date(b.end);
+            const dayStart = new Date(date);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(date);
+            dayEnd.setHours(23, 59, 59, 999);
+            return start < dayEnd && end > dayStart;
+        });
+        
+        dayBookings.forEach(booking => {
+            const bookingStart = new Date(booking.start);
+            const bookingEnd = new Date(booking.end);
+            const clampedStart = bookingStart > visibleStart ? bookingStart : visibleStart;
+            const clampedEnd = bookingEnd < visibleEnd ? bookingEnd : visibleEnd;
+            if (clampedEnd <= clampedStart) return;
+            const minutesFromVisibleStart = (clampedStart - visibleStart) / (1000 * 60);
+            const durationMinutes = (clampedEnd - clampedStart) / (1000 * 60);
+            const topPx = minutesFromVisibleStart;
+            const heightPx = durationMinutes;
+            const now = new Date();
+            const isRunning = bookingStart <= now && bookingEnd > now;
+            const startTime = bookingStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            const endTime = bookingEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            dayColumnHtml += `
+                <div class="calendar-booking${isRunning ? ' running' : ''}" style="top: ${topPx}px; height: ${heightPx}px;" onclick="viewBookingDetails('${booking.id}')">
+                    <div class="calendar-booking-title">${escapeHtml(booking.title)}</div>
+                    <div class="calendar-booking-time">${startTime} - ${endTime}</div>
                 </div>
-            </div>
-            <div class="booking-info">
-                ${showRoom ? `<span><strong>Room:</strong> ${safeRoom}</span>` : ''}
-                <span><strong>Booked by:</strong> ${safeBookedBy}</span>
-                <span><strong>Start:</strong> ${startTime}</span>
-                <span><strong>End:</strong> ${endTime}</span>
-            </div>
-            ${noteMarkup}
+            `;
+        });
+        
+        dayColumnHtml += '</div>';
+        html += dayColumnHtml;
+    }
+    
+    html += '</div>';
+    html += '</div>';
+    container.innerHTML = html;
+
+    initializeCalendarHover();
+}
+
+let lastHoverDate = null;
+let lastHoverHour = null;
+
+function initializeCalendarHover() {
+    document.addEventListener('mouseover', (e) => {
+        const cell = e.target.closest('.hour-cell');
+        if (!cell) return;
+        const date = cell.dataset.date;
+        const hour = cell.dataset.hour;
+        if (!date || !hour) return;
+
+        if (lastHoverDate === date && lastHoverHour === hour) return;
+        clearHoverHighlights();
+        applyHoverHighlights(date, hour);
+        lastHoverDate = date;
+        lastHoverHour = hour;
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        const cell = e.target.closest('.hour-cell');
+        if (!cell) return;
+        clearHoverHighlights();
+        lastHoverDate = null;
+        lastHoverHour = null;
+    });
+}
+
+function applyHoverHighlights(date, hour) {
+    const headerCell = document.querySelector(`.calendar-header-cell[data-date="${date}"]`);
+    if (headerCell) headerCell.classList.add('hover');
+    const timeLabel = document.querySelector(`.time-labels-column .time-label[data-hour="${hour}"]`);
+    if (timeLabel) timeLabel.classList.add('hover');
+    document.querySelectorAll(`.hour-cell[data-hour="${hour}"]`).forEach(el => el.classList.add('hover-row'));
+}
+
+function clearHoverHighlights() {
+    document.querySelectorAll('.calendar-header-cell.hover').forEach(el => el.classList.remove('hover'));
+    document.querySelectorAll('.time-label.hover').forEach(el => el.classList.remove('hover'));
+    document.querySelectorAll('.hour-cell.hover-row').forEach(el => el.classList.remove('hover-row'));
+}
+
+function formatHour(hour) {
+    if (hour === 0) return '12 AM';
+    if (hour < 12) return `${hour} AM`;
+    if (hour === 12) return '12 PM';
+    return `${hour - 12} PM`;
+}
+
+function getBookingsForSlot(room, date, hour) {
+    const roomLabel = `Room ${room}`;
+    const slotStart = new Date(date);
+    slotStart.setHours(hour, 0, 0, 0);
+    const slotEnd = new Date(date);
+    slotEnd.setHours(hour + 1, 0, 0, 0);
+    
+    return allBookings.filter(booking => {
+        if (booking.room !== roomLabel) return false;
+        
+        const bookingStart = new Date(booking.start);
+        const bookingEnd = new Date(booking.end);
+        
+        return bookingStart < slotEnd && bookingEnd > slotStart;
+    });
+}
+
+function createCalendarBooking(booking, date, hour) {
+    const slotStart = new Date(date);
+    slotStart.setHours(hour, 0, 0, 0);
+    const slotEnd = new Date(date);
+    slotEnd.setHours(hour + 1, 0, 0, 0);
+    
+    const bookingStart = new Date(booking.start);
+    const bookingEnd = new Date(booking.end);
+    
+    let topPercent = 0;
+    let heightPercent = 100;
+    
+    if (bookingStart > slotStart) {
+        const minutesFromStart = (bookingStart - slotStart) / (1000 * 60);
+        topPercent = (minutesFromStart / 60) * 100;
+    }
+    
+    if (bookingEnd < slotEnd) {
+        const durationMinutes = (bookingEnd - bookingStart) / (1000 * 60);
+        heightPercent = (durationMinutes / 60) * 100;
+    } else if (bookingStart < slotStart) {
+        const durationInSlot = (bookingEnd - slotStart) / (1000 * 60);
+        heightPercent = Math.min((durationInSlot / 60) * 100, 100);
+        topPercent = 0;
+    }
+    
+    const now = new Date();
+    const isRunning = bookingStart <= now && bookingEnd > now;
+    
+    const startTime = bookingStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const endTime = bookingEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    
+    return `
+        <div class="calendar-booking${isRunning ? ' running' : ''}" 
+             style="top: ${topPercent}%; height: ${heightPercent}%;"
+             onclick="viewBookingDetails('${booking.id}')">
+            <div class="calendar-booking-title">${escapeHtml(booking.title)}</div>
+            <div class="calendar-booking-time">${startTime} - ${endTime}</div>
         </div>
     `;
 }
 
-function getBookingStatus(booking, now) {
+function refreshAllCalendars() {
+    ['A', 'B', 'C'].forEach(room => {
+        const calendarView = document.querySelector(`.calendar-view[data-room="${room}"]`);
+        if (calendarView && calendarView.classList.contains('active')) {
+            renderCalendar(room);
+        }
+    });
+}
+
+// Summary View
+function displaySummaryViews() {
+    const now = new Date();
+    const upcomingBookings = allBookings.filter(b => new Date(b.end) > now);
+    
+    displayRoomSummary('A', upcomingBookings.filter(b => b.room === 'Room A'));
+    displayRoomSummary('B', upcomingBookings.filter(b => b.room === 'Room B'));
+    displayRoomSummary('C', upcomingBookings.filter(b => b.room === 'Room C'));
+    displayAllBookings(upcomingBookings);
+    // displayAllBookings(allBookings);
+}
+
+function displayRoomSummary(room, bookings) {
+    const container = document.getElementById(`room${room}-bookings`);
+    if (!container) return;
+    
+    if (bookings.length === 0) {
+        container.innerHTML = '<p class="no-bookings">No upcoming bookings</p>';
+        return;
+    }
+    
+    bookings.sort((a, b) => new Date(a.start) - new Date(b.start));
+    container.innerHTML = bookings.map(b => createBookingCard(b, false)).join('');
+}
+
+function displayAllBookings(bookings) {
+    const container = document.getElementById('all-bookings');
+    if (!container) return;
+    
+    if (bookings.length === 0) {
+        container.innerHTML = '<p class="no-bookings">No upcoming bookings</p>';
+        return;
+    }
+    
+    bookings.sort((a, b) => new Date(a.start) - new Date(b.start));
+    container.innerHTML = bookings.map(b => createBookingCard(b, true)).join('');
+}
+
+function createBookingCard(booking, showRoom) {
+    const now = new Date();
     const start = new Date(booking.start);
     const end = new Date(booking.end);
-
-    if (now >= start && now < end) {
-        return 'running';
-    }
-
-    if (now < start) {
-        return 'upcoming';
-    }
-
-    return 'past';
-}
-
-function getBookingStatusLabel(status) {
-    switch (status) {
-        case 'running':
-            return 'Running';
-        case 'upcoming':
-            return 'Upcoming';
-        case 'past':
-        default:
-            return 'Finished';
-    }
-}
-
-function updateNowRunningBox(runningBookings, now) {
-    const box = document.getElementById('nowRunningBox');
-    const content = document.getElementById('nowRunningContent');
-
-    if (!box || !content) {
-        return;
-    }
-
-    if (!runningBookings.length) {
-        content.innerHTML = '';
-        box.classList.add('hidden');
-        return;
-    }
-
-    box.classList.remove('hidden');
-    const sortedRunning = [...runningBookings].sort((a, b) => new Date(a.start) - new Date(b.start));
-
-    const markup = sortedRunning
-        .map(booking => createRunningNoteMarkup(booking))
-        .join('');
-
-    renderIfChanged(content, markup);
-}
-
-function createRunningNoteMarkup(booking) {
-    const noteText = typeof booking.note === 'string' ? booking.note.trim() : '';
-    const safeTitle = escapeHtml(booking.title);
-    const safeRoom = escapeHtml(booking.room);
-    const safeBookedBy = escapeHtml(booking.bookedBy);
-    const safeNote = noteText ? escapeHtml(noteText) : '';
-    const timeRange = formatTimeRange(booking);
-    const noteMarkup = safeNote
-        ? `<p class="now-running-note"><strong>Note:</strong> ${safeNote}</p>`
-        : '<p class="now-running-note muted">No note provided.</p>';
-
+    
+    let status = 'upcoming';
+    if (now >= start && now < end) status = 'running';
+    else if (now >= end) status = 'past';
+    
+    const statusLabel = status === 'running' ? 'Running' : status === 'upcoming' ? 'Upcoming' : 'Finished';
+    
     return `
-        <div class="now-running-item">
-            <div class="now-running-meta">
-                <span class="now-running-room">${safeRoom}</span>
-                <span class="now-running-time">${timeRange}</span>
+        <div class="booking-card booking-status-${status}" onclick="viewBookingDetails('${booking.id}')" style="cursor: pointer;">
+            <div class="booking-card-header">
+                <h3>${escapeHtml(booking.title)}</h3>
+                <span class="status-badge status-badge-${status}">${statusLabel}</span>
             </div>
-            <h4>${safeTitle}</h4>
-            ${noteMarkup}
-            <span class="now-running-host">Hosted by ${safeBookedBy}</span>
+            <div class="booking-info">
+                ${showRoom ? `<span><strong>Room:</strong> ${escapeHtml(booking.room)}</span>` : ''}
+                <span><strong>Booked by:</strong> ${escapeHtml(booking.bookedBy)}</span>
+                <span><strong>Start:</strong> ${formatDateTime(booking.start)}</span>
+                <span><strong>End:</strong> ${formatDateTime(booking.end)}</span>
+            </div>
+            ${booking.note ? `<div class="booking-note"><strong>Note:</strong> ${escapeHtml(booking.note)}</div>` : ''}
         </div>
     `;
 }
 
-function formatTimeRange(booking) {
-    const options = { hour: '2-digit', minute: '2-digit' };
-    const start = new Date(booking.start).toLocaleTimeString('en-US', options);
-    const end = new Date(booking.end).toLocaleTimeString('en-US', options);
-    return `${start} - ${end}`;
-}
-
-// Format date and time
 function formatDateTime(dateString) {
     const date = new Date(dateString);
-    const options = {
+    return date.toLocaleString('en-US', {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
-    };
-    return date.toLocaleString('en-US', options);
-}
-
-function escapeHtml(value) {
-    if (value === null || value === undefined) {
-        return '';
-    }
-
-    return String(value).replace(/[&<>"']/g, (match) => {
-        switch (match) {
-            case '&':
-                return '&amp;';
-            case '<':
-                return '&lt;';
-            case '>':
-                return '&gt;';
-            case '"':
-                return '&quot;';
-            case '\'':
-                return '&#39;';
-            default:
-                return match;
-        }
     });
 }
 
-function renderIfChanged(element, markup) {
-    if (!element) {
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Event Details Modal
+function viewBookingDetails(bookingId) {
+    const booking = allBookings.find(b => String(b.id) === String(bookingId));
+    if (!booking) return;
+    
+    currentEventId = bookingId;
+    const canEdit = canEditBooking(booking);
+    
+    const now = new Date();
+    const start = new Date(booking.start);
+    const end = new Date(booking.end);
+    
+    let status = 'Upcoming';
+    if (now >= start && now < end) status = 'Running';
+    else if (now >= end) status = 'Finished';
+    
+    let detailsHtml = `
+        <div class="event-details-content">
+            <div class="event-detail-row">
+                <strong>Meeting Title</strong>
+                <span>${escapeHtml(booking.title)}</span>
+            </div>
+            <div class="event-detail-row">
+                <strong>Room</strong>
+                <span>${escapeHtml(booking.room)}</span>
+            </div>
+            <div class="event-detail-row">
+                <strong>Booked By</strong>
+                <span>${escapeHtml(booking.bookedBy)}</span>
+            </div>
+            <div class="event-detail-row">
+                <strong>Status</strong>
+                <span>${status}</span>
+            </div>
+            <div class="event-detail-row">
+                <strong>Start Time</strong>
+                <span>${formatDateTime(booking.start)}</span>
+            </div>
+            <div class="event-detail-row">
+                <strong>End Time</strong>
+                <span>${formatDateTime(booking.end)}</span>
+            </div>
+            ${booking.note ? `
+            <div class="event-detail-row">
+                <strong>Note</strong>
+                <span>${escapeHtml(booking.note)}</span>
+            </div>
+            ` : ''}
+        </div>
+    `;
+    
+    if (canEdit) {
+        detailsHtml += `
+            <div class="event-actions">
+                <button class="edit-btn" onclick="editBooking('${bookingId}')">Edit Meeting</button>
+                <button class="delete-btn" onclick="deleteBooking('${bookingId}')">Delete Meeting</button>
+            </div>
+        `;
+    }
+    
+    document.getElementById('eventDetails').innerHTML = detailsHtml;
+    document.getElementById('eventModal').style.display = 'block';
+}
+
+function closeEventModal() {
+    document.getElementById('eventModal').style.display = 'none';
+    currentEventId = null;
+}
+
+// Edit and Delete Functions
+function editBooking(bookingId) {
+    const booking = allBookings.find(b => String(b.id) === String(bookingId));
+    if (!booking || !canEditBooking(booking)) {
+        showPopup('You do not have permission to edit this booking', 'error');
         return;
     }
+    
+    closeEventModal();
+    
+    const roomLetter = booking.room.replace('Room ', '');
+    const modal = document.getElementById('bookingModal');
+    const form = document.getElementById('bookingForm');
+    
+    form.dataset.editMode = 'true';
+    form.dataset.bookingId = bookingId;
+    
+    document.getElementById('room').value = booking.room;
+    document.getElementById('title').value = booking.title;
+    document.getElementById('startTime').value = toDateTimeLocal(new Date(booking.start));
+    document.getElementById('endTime').value = toDateTimeLocal(new Date(booking.end));
+    document.getElementById('note').value = booking.note || '';
+    
+    const byGroup3 = document.getElementById('bookedByGroup');
+    const byInput3 = document.getElementById('bookedByDisplay');
+    if (byGroup3 && byInput3) {
+        byInput3.value = booking.bookedBy || '';
+        byGroup3.classList.remove('hidden');
+    }
+    modal.querySelector('h2').textContent = 'Edit Booking';
+    modal.style.display = 'block';
+    autosizeNote();
+}
 
-    const previousMarkup = renderCache.get(element);
-    if (previousMarkup === markup) {
+async function deleteBooking(bookingId) {
+    const booking = allBookings.find(b => String(b.id) === String(bookingId));
+    if (!booking || !canEditBooking(booking)) {
+        showPopup('You do not have permission to delete this booking', 'error');
         return;
     }
-
-    element.innerHTML = markup;
-    renderCache.set(element, markup);
+    
+    const confirmed = await showConfirm('Are you sure you want to delete this booking?', 'Delete');
+    if (!confirmed) {
+        return;
+    }
+    
+    try {
+        await fetch(POST_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'delete',
+                id: bookingId
+            })
+        });
+        
+        await showPopup('Booking deleted successfully', 'success');
+        closeEventModal();
+        setTimeout(loadBookings, 1500);
+    } catch (error) {
+        console.error('Error:', error);
+        await showPopup('Failed to delete booking. Please try again.', 'error');
+    }
 }
 
-function findBookingById(id) {
-    if (!id) {
-        return null;
+// Modal Functions
+function openModal(room) {
+    if (!currentUser) {
+        showPopup('Please login to create a booking', 'info');
+        openLoginModal();
+        return;
     }
-
-    return allBookings.find(booking => String(booking.id) === String(id)) || null;
+    
+    const modal = document.getElementById('bookingModal');
+    const form = document.getElementById('bookingForm');
+    form.reset();
+    delete form.dataset.editMode;
+    delete form.dataset.bookingId;
+    
+    document.getElementById('room').value = `Room ${room}`;
+    const byGroup = document.getElementById('bookedByGroup');
+    const byInput = document.getElementById('bookedByDisplay');
+    if (byGroup && byInput) {
+        byGroup.classList.add('hidden');
+        byInput.value = '';
+    }
+    modal.querySelector('h2').textContent = 'Add New Booking';
+    modal.style.display = 'block';
+    autosizeNote();
 }
 
-function getAuthorizedUser() {
-    return sessionStorage.getItem('authorizedUser') || '';
+function openModalWithTime(room, dateStr, hour) {
+    if (!currentUser) {
+        showPopup('Please login to create a booking', 'info');
+        openLoginModal();
+        return;
+    }
+    
+    const modal = document.getElementById('bookingModal');
+    const form = document.getElementById('bookingForm');
+    form.reset();
+    delete form.dataset.editMode;
+    delete form.dataset.bookingId;
+    
+    document.getElementById('room').value = `Room ${room}`;
+    
+    const startDate = new Date(dateStr);
+    startDate.setHours(hour, 0, 0, 0);
+    
+    const endDate = new Date(startDate);
+    endDate.setHours(hour + 1, 0, 0, 0);
+    
+    document.getElementById('startTime').value = toDateTimeLocal(startDate);
+    document.getElementById('endTime').value = toDateTimeLocal(endDate);
+    
+    modal.querySelector('h2').textContent = 'Add New Booking';
+    const byGroup2 = document.getElementById('bookedByGroup');
+    const byInput2 = document.getElementById('bookedByDisplay');
+    if (byGroup2 && byInput2) {
+        byGroup2.classList.add('hidden');
+        byInput2.value = '';
+    }
+    modal.style.display = 'block';
+    autosizeNote();
 }
 
-function normalizeName(value) {
-    return (value || '').toString().trim().toLowerCase();
-}
-
-function isAdminUser(name = getAuthorizedUser()) {
-    const normalized = normalizeName(name);
-    return ADMIN_USERS.some(adminName => normalizeName(adminName) === normalized);
-}
-
-function canEditBooking(booking) {
-    if (!booking || !isAuthorized()) {
-        return false;
-    }
-
-    const user = getAuthorizedUser();
-    if (!user) {
-        return false;
-    }
-
-    if (isAdminUser(user)) {
-        return true;
-    }
-
-    return normalizeName(booking.bookedBy) === normalizeName(user);
-}
-
-function formatRoomLabel(roomKey = '') {
-    const trimmed = (roomKey || '').toString().trim();
-    if (!trimmed) {
-        return '';
-    }
-
-    if (trimmed.toLowerCase().startsWith('room ')) {
-        return `Room ${trimmed.slice(5).trim()}`;
-    }
-
-    return trimmed.startsWith('Room ') ? trimmed : `Room ${trimmed}`;
-}
-
-function extractRoomKey(roomLabel = '') {
-    const value = (roomLabel || '').toString().trim();
-    if (!value) {
-        return '';
-    }
-
-    return value.toLowerCase().startsWith('room ')
-        ? value.slice(5).trim()
-        : value;
-}
-
-function deriveBookingId(booking) {
-    if (!booking || typeof booking !== 'object') {
-        return '';
-    }
-
-    const candidateKeys = [
-        'id',
-        'ID',
-        'bookingId',
-        'bookingID',
-        'recordId',
-        'recordID',
-        'rowId',
-        'rowID',
-        'entryId',
-        'entryID',
-        'uuid',
-        'UID',
-        'guid',
-        'timestamp',
-        'createdAt'
-    ];
-
-    for (const key of candidateKeys) {
-        if (key in booking) {
-            const candidate = booking[key];
-            if (candidate !== undefined && candidate !== null && String(candidate).trim() !== '') {
-                return String(candidate);
-            }
-        }
-    }
-
-    const fallback = [
-        booking.room || booking.roomKey || '',
-        booking.start || '',
-        booking.end || '',
-        booking.title || '',
-        booking.bookedBy || ''
-    ]
-        .map(part => String(part || '').trim().toLowerCase())
-        .join('|');
-
-    return fallback || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function toDatetimeLocalValue(value) {
-    if (!value) {
-        return '';
-    }
-
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return '';
-    }
-
+function toDateTimeLocal(date) {
     const year = date.getFullYear();
-    const month = padNumber(date.getMonth() + 1);
-    const day = padNumber(date.getDate());
-    const hours = padNumber(date.getHours());
-    const minutes = padNumber(date.getMinutes());
-
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
     return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-function padNumber(value) {
-    return String(value).padStart(2, '0');
-}
-
-function getBookingFormSnapshot() {
-    const form = document.getElementById('bookingForm');
-    if (!form) {
-        return {};
-    }
-
-    const getValue = (id) => {
-        const element = document.getElementById(id);
-        return element ? element.value : '';
-    };
-
-    return {
-        mode: form.dataset.mode || 'create',
-        room: getValue('room'),
-        title: getValue('title'),
-        start: getValue('startTime'),
-        end: getValue('endTime'),
-        bookedBy: getValue('bookedBy'),
-        note: getValue('note'),
-        accessCode: getValue('accessCode')
-    };
-}
-
-function recordBookingFormInitialState() {
-    const form = document.getElementById('bookingForm');
-    if (!form) {
-        return;
-    }
-
-    const snapshot = JSON.stringify(getBookingFormSnapshot());
-    form.dataset.initialState = snapshot;
-}
-
-function hasBookingFormChanges() {
-    const form = document.getElementById('bookingForm');
-    if (!form) {
-        return false;
-    }
-
-    const initialState = form.dataset.initialState;
-    if (!initialState) {
-        return true;
-    }
-
-    try {
-        const currentState = JSON.stringify(getBookingFormSnapshot());
-        return currentState !== initialState;
-    } catch (error) {
-        console.warn('Unable to compare booking form state:', error);
-        return true;
-    }
-}
-
-function isBookingModalOpen() {
-    const bookingModal = document.getElementById('bookingModal');
-    return Boolean(bookingModal && bookingModal.style.display === 'block');
-}
-
-function attemptCloseBookingModal() {
-    if (!isBookingModalOpen()) {
-        return;
-    }
-
-    const hasChanges = hasBookingFormChanges();
-    const message = hasChanges
-        ? 'Discard your changes to this booking?'
-        : 'Close the booking form without saving?';
-
-    openDiscardModal({
-        message,
-        cancelLabel: 'Keep Editing',
-        confirmLabel: hasChanges ? 'Discard Changes' : 'Close Form',
-        confirmTone: hasChanges ? 'destructive' : 'accent',
-        onConfirm: () => {
-            closeModal();
-        }
-    });
-}
-
-function openDiscardModal(options = {}) {
-    const discardModal = document.getElementById('discardModal');
-    if (!discardModal) {
-        if (typeof options.onConfirm === 'function') {
-            options.onConfirm();
-        }
-        return;
-    }
-
-    const messageEl = discardModal.querySelector('[data-discard-message]');
-    if (messageEl) {
-        messageEl.textContent = options.message || 'Discard changes?';
-    }
-
-    const cancelBtn = discardModal.querySelector('[data-discard-cancel]');
-    const confirmBtn = discardModal.querySelector('[data-discard-confirm]');
-
-    if (cancelBtn) {
-        if (!cancelBtn.dataset.defaultLabel) {
-            cancelBtn.dataset.defaultLabel = cancelBtn.textContent.trim();
-        }
-        if (!cancelBtn.dataset.defaultClass) {
-            cancelBtn.dataset.defaultClass = cancelBtn.className;
-        }
-        cancelBtn.textContent = options.cancelLabel || cancelBtn.dataset.defaultLabel || 'Keep Editing';
-        cancelBtn.className = cancelBtn.dataset.defaultClass || cancelBtn.className;
-    }
-
-    if (confirmBtn) {
-        if (!confirmBtn.dataset.defaultLabel) {
-            confirmBtn.dataset.defaultLabel = confirmBtn.textContent.trim();
-        }
-        if (!confirmBtn.dataset.defaultClass) {
-            confirmBtn.dataset.defaultClass = confirmBtn.className;
-        }
-        confirmBtn.textContent = options.confirmLabel || confirmBtn.dataset.defaultLabel || 'Discard';
-
-        const tone = options.confirmTone || 'destructive';
-        if (tone === 'accent') {
-            confirmBtn.className = 'submit-btn accent';
-        } else {
-            confirmBtn.className = 'submit-btn destructive';
-        }
-    }
-
-    discardModal.classList.remove('hidden');
-    discardModal.style.display = 'block';
-    pendingDiscardAction = typeof options.onConfirm === 'function' ? options.onConfirm : null;
-
-    const focusTarget = discardModal.querySelector('[data-discard-confirm]');
-    if (focusTarget) {
-        requestAnimationFrame(() => {
-            focusTarget.focus();
-        });
-    }
-}
-
-function closeDiscardModal(shouldConfirm = false) {
-    const discardModal = document.getElementById('discardModal');
-    if (!discardModal) {
-        return;
-    }
-
-    discardModal.style.display = 'none';
-    discardModal.classList.add('hidden');
-
-    const cancelBtn = discardModal.querySelector('[data-discard-cancel]');
-    const confirmBtn = discardModal.querySelector('[data-discard-confirm]');
-
-    if (cancelBtn) {
-        if (cancelBtn.dataset.defaultLabel) {
-            cancelBtn.textContent = cancelBtn.dataset.defaultLabel;
-        }
-        if (cancelBtn.dataset.defaultClass) {
-            cancelBtn.className = cancelBtn.dataset.defaultClass;
-        }
-    }
-
-    if (confirmBtn) {
-        if (confirmBtn.dataset.defaultLabel) {
-            confirmBtn.textContent = confirmBtn.dataset.defaultLabel;
-        }
-        if (confirmBtn.dataset.defaultClass) {
-            confirmBtn.className = confirmBtn.dataset.defaultClass;
-        }
-    }
-
-    const action = pendingDiscardAction;
-    pendingDiscardAction = null;
-
-    if (shouldConfirm && typeof action === 'function') {
-        action();
-    }
-}
-
-function attemptDeleteBooking() {
-    const bookingForm = document.getElementById('bookingForm');
-    if (!bookingForm || bookingForm.dataset.mode !== 'edit') {
-        return;
-    }
-
-    const bookingId = bookingForm.dataset.bookingId;
-    const booking = editingBookingOriginal || findBookingById(bookingId);
-
-    if (!booking) {
-        alert('Unable to locate this booking. Please refresh and try again.');
-        return;
-    }
-
-    if (!canEditBooking(booking)) {
-        alert('You are not permitted to delete this booking.');
-        return;
-    }
-
-    openDiscardModal({
-        message: 'Delete this meeting? This action cannot be undone.',
-        cancelLabel: 'Keep Meeting',
-        confirmLabel: 'Delete Meeting',
-        confirmTone: 'destructive',
-        onConfirm: () => performDeleteBooking(booking)
-    });
-}
-
-async function performDeleteBooking(booking) {
-    const sessionUser = getAuthorizedUser();
-    const payload = {
-        action: 'delete',
-        id: booking.id,
-        room: booking.room,
-        roomKey: booking.roomKey || extractRoomKey(booking.room),
-        title: booking.title,
-        start: booking.start,
-        end: booking.end,
-        bookedBy: booking.bookedBy,
-        note: booking.note || '',
-        deletedBy: sessionUser || booking.bookedBy || ''
-    };
-
-    try {
-        await fetch(POST_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload)
-        });
-
-        alert('Meeting deleted successfully.');
-        closeModal();
-        setTimeout(() => {
-            loadBookings();
-        }, 1200);
-    } catch (error) {
-        console.error('Error deleting booking:', error);
-        alert('Failed to delete meeting. Please try again.');
-    }
-}
-
-// Authorization helpers
-function isAuthorized() {
-    return sessionStorage.getItem(AUTH_STORAGE_KEY) === 'true';
-}
-
-function openAuthModal(room) {
-    pendingRoom = room;
-    const authModal = document.getElementById('authModal');
-    const authForm = document.getElementById('authForm');
-    const authError = document.getElementById('authError');
-
-    authForm.reset();
-    authError.textContent = '';
-    authModal.style.display = 'block';
-
-    requestAnimationFrame(() => {
-        const nameField = document.getElementById('authName');
-        if (nameField) {
-            nameField.focus();
-        }
-    });
-}
-
-function closeAuthModal() {
-    const authModal = document.getElementById('authModal');
-    document.getElementById('authForm').reset();
-    document.getElementById('authError').textContent = '';
-    authModal.style.display = 'none';
-    pendingRoom = '';
-}
-
-// Open modal for adding booking
-function openModal(room) {
-    if (!isAuthorized()) {
-        openAuthModal(room);
-        return;
-    }
-
-    showBookingModal(room);
-}
-
-function showBookingModal(room, options = {}) {
-    const bookingModal = document.getElementById('bookingModal');
-    const bookingForm = document.getElementById('bookingForm');
-    if (!bookingModal || !bookingForm) {
-        return;
-    }
-
-    const booking = options.booking || null;
-    const mode = options.mode || (booking ? 'edit' : 'create');
-    const roomKey = extractRoomKey(booking ? booking.room : room);
-    const roomLabel = formatRoomLabel(roomKey);
-
-    currentRoom = roomKey;
-    pendingRoom = '';
-
-    bookingForm.reset();
-    bookingForm.dataset.mode = mode;
-    bookingForm.dataset.bookingId = booking && booking.id ? String(booking.id) : '';
-
-    const modalTitle = bookingModal.querySelector('.modal-header h2');
-    if (modalTitle) {
-        modalTitle.textContent = mode === 'edit' ? 'Edit Booking' : 'Add New Booking';
-    }
-
-    const roomField = document.getElementById('room');
-    const titleField = document.getElementById('title');
-    const startField = document.getElementById('startTime');
-    const endField = document.getElementById('endTime');
-    const bookedByField = document.getElementById('bookedBy');
-    const accessCodeField = document.getElementById('accessCode');
-    const noteField = document.getElementById('note');
-    const submitButton = document.getElementById('submitBookingBtn');
-    const deleteButton = document.getElementById('deleteBookingBtn');
-
-    roomField.value = roomLabel;
-
-    if (mode === 'edit' && booking) {
-        titleField.value = booking.title || '';
-        startField.value = toDatetimeLocalValue(booking.start);
-        endField.value = toDatetimeLocalValue(booking.end);
-        startField.min = '';
-        endField.min = '';
-        bookedByField.value = booking.bookedBy || '';
-        noteField.value = booking.note || '';
-        accessCodeField.required = false;
-        accessCodeField.placeholder = 'Access code (required only if changing host)';
-    } else {
-        const now = new Date();
-        const dateTimeString = now.toISOString().slice(0, 16);
-        startField.min = dateTimeString;
-        endField.min = dateTimeString;
-        bookedByField.value = getAuthorizedUser() || '';
-        noteField.value = '';
-        accessCodeField.required = true;
-        accessCodeField.placeholder = 'Enter access code';
-    }
-
-    accessCodeField.value = '';
-    if (submitButton) {
-        submitButton.textContent = mode === 'edit' ? 'Save Changes' : 'Submit Booking';
-    }
-    if (deleteButton) {
-        deleteButton.classList.toggle('hidden', mode !== 'edit');
-    }
-    bookingModal.style.display = 'block';
-    pendingDiscardAction = null;
-    recordBookingFormInitialState();
-
-    requestAnimationFrame(() => {
-        if (titleField) {
-            titleField.focus();
-        }
-    });
-}
-
-// Close modal
 function closeModal() {
-    const bookingModal = document.getElementById('bookingModal');
-    const bookingForm = document.getElementById('bookingForm');
-    const accessCodeField = document.getElementById('accessCode');
-
-    closeDiscardModal(false);
-
-    if (bookingModal) {
-        bookingModal.style.display = 'none';
-    }
-
-    if (bookingForm) {
-        bookingForm.reset();
-        bookingForm.dataset.mode = 'create';
-        bookingForm.dataset.bookingId = '';
-        delete bookingForm.dataset.initialState;
-    }
-
-    if (accessCodeField) {
-        accessCodeField.required = true;
-        accessCodeField.placeholder = 'Enter access code';
-    }
-
-    editingBookingId = null;
-    editingBookingOriginal = null;
-    currentRoom = '';
-    pendingRoom = '';
-    pendingDiscardAction = null;
+    const form = document.getElementById('bookingForm');
+    document.getElementById('bookingModal').style.display = 'none';
+    form.reset();
+    delete form.dataset.editMode;
+    delete form.dataset.bookingId;
+    form.querySelector('h2').textContent = 'Add New Booking';
 }
 
-// Close modals when clicking outside
 window.onclick = function(event) {
-    const modal = document.getElementById('bookingModal');
-    const authModal = document.getElementById('authModal');
-    const discardModal = document.getElementById('discardModal');
-
-    if (event.target === modal) {
-        attemptCloseBookingModal();
-    }
-
-    if (event.target === authModal) {
-        closeAuthModal();
-    }
-
-    if (event.target === discardModal) {
-        closeDiscardModal(false);
+    const bookingModal = document.getElementById('bookingModal');
+    const eventModal = document.getElementById('eventModal');
+    const loginModal = document.getElementById('loginModal');
+    
+    if (event.target === bookingModal) {
+        closeModal();
+    } else if (event.target === eventModal) {
+        closeEventModal();
+    } else if (event.target === loginModal) {
+        closeLoginModal();
     }
 }
 
-// Handle authorization form
-document.getElementById('authForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-
-    const name = document.getElementById('authName').value.trim();
-    const accessCode = document.getElementById('authCode').value;
-    const authError = document.getElementById('authError');
-
-    if (validUsers[name] && validUsers[name] === accessCode) {
-        sessionStorage.setItem(AUTH_STORAGE_KEY, 'true');
-        sessionStorage.setItem('authorizedUser', name);
-        const roomToOpen = pendingRoom || currentRoom || 'A';
-
-        closeAuthModal();
-        displayBookings(new Date());
-        showBookingModal(roomToOpen);
-        return;
-    }
-
-    authError.textContent = 'Access denied.';
-    document.getElementById('authCode').value = '';
-    requestAnimationFrame(() => {
-        document.getElementById('authCode').focus();
-    });
-});
-
-// Handle form submission
+// Form Submission
 document.getElementById('bookingForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-
-    const bookingForm = e.target;
-    const mode = bookingForm.dataset.mode || 'create';
-    const editingId = bookingForm.dataset.bookingId || '';
-    const formData = new FormData(bookingForm);
-
-    const roomInput = (formData.get('room') || '').toString().trim();
-    const roomKey = extractRoomKey(roomInput);
-    const roomLabel = formatRoomLabel(roomKey);
-    const title = (formData.get('title') || '').trim();
-    const name = (formData.get('bookedBy') || '').trim();
-    const accessCode = (formData.get('accessCode') || '').trim();
-    const note = (formData.get('note') || '').trim();
-    const startValue = formData.get('startTime');
-    const endValue = formData.get('endTime');
-
-    if (!title) {
-        alert('Meeting title is required.');
+    
+    if (!currentUser) {
+        showPopup('Please login to create or edit a booking', 'info');
         return;
     }
-
-    if (!roomLabel) {
-        alert('Room selection is required.');
+    
+    const form = e.target;
+    const isEditMode = form.dataset.editMode === 'true';
+    const bookingId = form.dataset.bookingId;
+    
+    const formData = new FormData(form);
+    const room = formData.get('room');
+    const title = formData.get('title');
+    const startTime = formData.get('startTime');
+    const endTime = formData.get('endTime');
+    const note = formData.get('note');
+    
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    
+    if (end <= start) {
+        showPopup('End time must be after start time', 'warning');
         return;
     }
-
-    const startTime = new Date(startValue);
-    const endTime = new Date(endValue);
-
-    if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
-        alert('Please provide valid start and end times.');
-        return;
-    }
-
-    if (endTime <= startTime) {
-        alert('End time must be after start time');
-        return;
-    }
-
-    const sessionUser = getAuthorizedUser();
-    const isAdmin = isAdminUser(sessionUser);
-    const targetBooking = mode === 'edit' ? findBookingById(editingId) : null;
-    const originalHost = targetBooking ? targetBooking.bookedBy : '';
-    const isOwner = targetBooking ? normalizeName(targetBooking.bookedBy) === normalizeName(sessionUser) : false;
-
-    if (mode === 'create') {
-        if (!validUsers[name] || validUsers[name] !== accessCode) {
-            alert('Access denied: Invalid name or access code');
-            return;
-        }
-    } else {
-        if (!isAuthorized() || (!isOwner && !isAdmin)) {
-            alert('You are not authorized to edit this booking.');
-            return;
-        }
-
-        const hostChanged = targetBooking && normalizeName(name) !== normalizeName(originalHost);
-        if (hostChanged) {
-            if (!validUsers[name] || validUsers[name] !== accessCode) {
-                alert('Please provide the access code for the updated host.');
-                return;
-            }
-        } else if (accessCode && (!validUsers[originalHost] || validUsers[originalHost] !== accessCode)) {
-            alert('Access code does not match the current host.');
-            return;
-        }
-    }
-
+    
+    // Check for conflicts (exclude current booking if editing)
     const hasConflict = allBookings.some(booking => {
-        if (booking.room !== roomLabel) return false;
-        if (mode === 'edit' && booking.id === editingId) return false;
-
+        if (isEditMode && String(booking.id) === String(bookingId)) return false;
+        if (booking.room !== room) return false;
         const bookingStart = new Date(booking.start);
         const bookingEnd = new Date(booking.end);
-
-        return (
-            (startTime >= bookingStart && startTime < bookingEnd) ||
-            (endTime > bookingStart && endTime <= bookingEnd) ||
-            (startTime <= bookingStart && endTime >= bookingEnd)
-        );
+        return (start < bookingEnd && end > bookingStart);
     });
-
+    
     if (hasConflict) {
-        alert('This time slot conflicts with an existing booking. Please choose a different time.');
+        showPopup('This time slot conflicts with an existing booking', 'warning');
         return;
     }
-
-    const bookingPayload = {
-        action: mode === 'edit' ? 'update' : 'create',
-        room: roomLabel,
-        roomKey,
+    
+    const booking = {
+        action: isEditMode ? 'update' : 'create',
+        room,
         title,
-        start: startTime.toISOString(),
-        end: endTime.toISOString(),
-        bookedBy: name,
-        note,
-        submittedBy: sessionUser || name
+        start: start.toISOString(),
+        end: end.toISOString(),
+        bookedBy: currentUser.name,
+        note: note || ''
     };
-
-    if (mode === 'edit') {
-        bookingPayload.id = editingId;
-        bookingPayload.originalId = editingBookingOriginal?.id || editingId;
-        bookingPayload.originalRoom = editingBookingOriginal?.room || roomLabel;
-        bookingPayload.originalStart = editingBookingOriginal?.start || '';
-        bookingPayload.originalEnd = editingBookingOriginal?.end || '';
-        bookingPayload.originalBookedBy = editingBookingOriginal?.bookedBy || '';
-        bookingPayload.originalTitle = editingBookingOriginal?.title || '';
-        bookingPayload.updatedBy = sessionUser || name;
-    } else {
-        bookingPayload.createdBy = name;
+    
+    if (isEditMode) {
+        booking.id = bookingId;
     }
-
+    
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.dataset.prevText = submitBtn.textContent;
+        submitBtn.textContent = isEditMode ? 'Updating...' : 'Submitting...';
+    }
+    
     try {
         await fetch(POST_URL, {
             method: 'POST',
             mode: 'no-cors',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(bookingPayload)
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(booking)
         });
-
-        alert(mode === 'edit' ? 'Booking updated successfully!' : 'Booking submitted successfully!');
+        await showPopup(`Booking ${isEditMode ? 'updated' : 'submitted'} successfully`, 'success');
         closeModal();
-
-        setTimeout(() => {
-            loadBookings();
-        }, 1500);
+        setTimeout(loadBookings, 1500);
     } catch (error) {
-        console.error('Error submitting booking:', error);
-        alert(mode === 'edit' ? 'Failed to update booking. Please try again.' : 'Failed to submit booking. Please try again.');
+        console.error('Error:', error);
+        await showPopup(`Failed to ${isEditMode ? 'update' : 'submit'} booking. Please try again.`, 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = submitBtn.dataset.prevText || submitBtn.textContent;
+            delete submitBtn.dataset.prevText;
+        }
     }
 });
 
-// Show error message
-function showError(message) {
-    const containers = [
-        'roomA-bookings',
-        'roomB-bookings',
-        'roomC-bookings',
-        'all-bookings'
-    ];
-    
-    containers.forEach(id => {
-        const container = document.getElementById(id);
-        renderIfChanged(container, `<p class="no-bookings" style="color: #ff6b6b;">${message}</p>`);
-    });
+function initializeNoteAutosize() {
+    const note = document.getElementById('note');
+    if (!note) return;
+    note.style.overflowY = 'hidden';
+    note.style.resize = 'none';
+    const handler = () => {
+        note.style.height = 'auto';
+        note.style.height = note.scrollHeight + 'px';
+    };
+    note.addEventListener('input', handler);
+    note.addEventListener('change', handler);
+    handler();
+}
 
-    updateNowRunningBox([], new Date());
+function autosizeNote() {
+    const note = document.getElementById('note');
+    if (!note) return;
+    note.style.height = 'auto';
+    note.style.height = note.scrollHeight + 'px';
 }
