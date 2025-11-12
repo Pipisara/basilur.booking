@@ -220,6 +220,12 @@ function setActiveTab(tabKey) {
     contents.forEach(content => {
         content.classList.toggle('active', content.id === `tab-${tabKey}`);
     });
+
+    if (tabKey === 'allRooms') {
+        loadBookings();
+    } else {
+        displayBookings(new Date());
+    }
 }
 
 function initializeBookingCardActions() {
