@@ -143,6 +143,7 @@ header h1 {
     backdrop-filter: blur(6px);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
 }
 
 .tab-button {
@@ -275,6 +276,18 @@ header h1 {
     max-height: 500px;
     overflow-y: auto;
     padding-right: 0.5rem;
+    animation: slideInUp 0.6s ease-out;
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .bookings-list::-webkit-scrollbar {
@@ -299,6 +312,24 @@ header h1 {
     transition: all 0.3s ease;
     border: 1px solid rgba(255, 255, 255, 0.05);
     box-shadow: 0 0 15px rgba(0, 0, 0, 0.35);
+    animation: cardSlideIn 0.5s ease-out backwards;
+}
+
+.booking-card:nth-child(1) { animation-delay: 0.1s; }
+.booking-card:nth-child(2) { animation-delay: 0.2s; }
+.booking-card:nth-child(3) { animation-delay: 0.3s; }
+.booking-card:nth-child(4) { animation-delay: 0.4s; }
+.booking-card:nth-child(n+5) { animation-delay: 0.5s; }
+
+@keyframes cardSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
 }
 
 .booking-card:hover {
@@ -437,7 +468,7 @@ header h1 {
     grid-template-columns: 60px repeat(7, 1fr);
     background: rgba(0, 188, 212, 0.15);
     border-bottom: 2px solid rgba(0, 188, 212, 0.3);
-    min-width: 600px;
+    min-width: 700px;
 }
 
 .calendar-header-cell {
@@ -459,7 +490,7 @@ header h1 {
 
 .calendar-body {
     position: relative;
-    min-width: 600px;
+    min-width: 700px;
 }
 
 .calendar-days {
@@ -539,12 +570,38 @@ header h1 {
     border-left-color: #ff4c4c;
 }
 
+.current-time-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #ff3333;
+    box-shadow: 0 0 8px rgba(255, 51, 51, 0.6);
+    z-index: 10;
+    pointer-events: none;
+}
+
+.current-time-line::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 10px;
+    height: 10px;
+    background: #ff3333;
+    border-radius: 50%;
+    box-shadow: 0 0 6px rgba(255, 51, 51, 0.8);
+}
+
 .calendar-booking-title {
     font-weight: 600;
     margin-bottom: 0.2rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    font-size: 0.85rem;
+    line-height: 1.3;
 }
 
 .calendar-booking-time {
@@ -780,6 +837,28 @@ textarea {
 
 /* Mobile Optimizations */
 @media (max-width: 768px) {
+    .tabs-header {
+        animation: autoScrollTabs 25s ease-in-out infinite;
+    }
+    
+    @keyframes autoScrollTabs {
+        0%, 100% {
+            scroll-behavior: auto;
+        }
+        2% {
+            scroll-behavior: auto;
+            scroll-left: 0;
+        }
+        50% {
+            scroll-behavior: smooth;
+            scroll-left: 200px;
+        }
+        98% {
+            scroll-behavior: auto;
+            scroll-left: 0;
+        }
+    }
+    
     header {
         padding: 0.8rem 1rem;
     }
@@ -961,5 +1040,209 @@ textarea {
 
     .week-nav-btn {
         font-size: 0.75rem;
+    }
+}
+
+/* Additional mobile improvements */
+@media (max-width: 768px) {
+    /* Make tab buttons scrollable and touch-friendly */
+    .tab-button {
+        flex: none;
+        min-width: 100px;
+        padding: 0.85rem 1rem;
+        border-radius: 10px;
+    }
+
+    /* Reduce header clutter on mobile */
+    .panel-header {
+        gap: 0.6rem;
+    }
+
+    /* Keep brand title visible on mobile with responsive sizing */
+    .header-brand h1 {
+        font-size: 1rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 150px;
+    }
+
+    /* Collapse user info to save horizontal real estate */
+    .user-info span {
+        display: none;
+    }
+
+    /* Make primary action buttons larger and full width */
+    .add-booking-btn,
+    .submit-btn,
+    .login-btn,
+    .logout-btn {
+        padding: 0.9rem 1rem;
+        font-size: 1rem;
+        width: 100%;
+    }
+
+    .view-toggle-btn {
+        padding: 0.7rem 0.9rem;
+        min-width: 0;
+        flex: 1;
+        text-align: center;
+    }
+
+    /* Give more vertical room for booking list and ensure scrolling works well */
+    .bookings-list {
+        max-height: calc(100vh - 260px);
+    }
+
+    /* Calendar: ensure it's horizontally scrollable and columns are narrower but usable */
+    .calendar-grid,
+    .calendar-header,
+    .calendar-body {
+        min-width: 540px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .calendar-header {
+        grid-template-columns: 50px repeat(7, minmax(64px, 1fr));
+    }
+
+    .calendar-days {
+        grid-template-columns: 50px repeat(7, minmax(64px, 1fr));
+    }
+
+    .calendar-booking {
+        padding: 0.4rem;
+        font-size: 0.72rem;
+    }
+
+    /* Make modal occupy more of the screen for easier interaction */
+    .modal-content {
+        max-width: 720px;
+    }
+}
+
+@media (max-width: 420px) {
+    /* On very small screens make modal full-screen-like */
+    .modal-content {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        max-height: none;
+        border-radius: 0;
+        padding: 1rem;
+    }
+
+    /* Reduce calendar min width to enable better zoom/scrolling on tiny devices */
+    .calendar-grid,
+    .calendar-header,
+    .calendar-body {
+        min-width: 480px;
+    }
+
+    /* Increase touch targets and stack controls */
+    .week-navigation,
+    .calendar-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .booking-card {
+        padding: 1rem;
+    }
+
+    /* Hide long notes to reduce vertical scrolling; users can open event to see details */
+    .booking-note {
+        display: none;
+    }
+
+    /* Ensure event action buttons are full width */
+    .event-actions {
+        flex-direction: column;
+    }
+}
+
+/* Minor utility: ensure any truncated text shows ellipsis on small screens */
+.calendar-booking-title,
+.booking-card h3,
+.booking-info span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Enhanced Desktop & Mobile Responsive Support */
+@media (max-width: 1200px) {
+    .container {
+        padding: 0 1rem;
+    }
+    
+    .modal-content {
+        max-width: 520px;
+    }
+}
+
+@media (min-width: 769px) {
+    /* Desktop optimizations */
+    .header-brand h1 {
+        font-size: 1.5rem;
+        max-width: none;
+        white-space: normal;
+    }
+    
+    .header-content {
+        gap: 1.5rem;
+    }
+    
+    .login-btn, .logout-btn {
+        padding: 0.6rem 1rem;
+        font-size: 0.9rem;
+        width: auto;
+    }
+    
+    .add-booking-btn,
+    .submit-btn {
+        padding: 0.65rem 1.2rem;
+        font-size: 0.9rem;
+        width: auto;
+    }
+}
+
+@media (max-width: 768px) and (min-width: 481px) {
+    /* Tablet optimizations */
+    .header-brand h1 {
+        font-size: 1.1rem;
+        max-width: 140px;
+    }
+    
+    header h1 {
+        font-size: 1.1rem;
+    }
+    
+    .container {
+        padding: 0 0.8rem;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Mobile optimizations */
+    .header-brand h1 {
+        font-size: 0.95rem;
+        max-width: 120px;
+    }
+    
+    header h1 {
+        font-size: 0.95rem;
+    }
+    
+    .container {
+        padding: 0 0.6rem;
+        margin: 0.8rem auto;
+    }
+    
+    .global-clock {
+        display: none;
     }
 }

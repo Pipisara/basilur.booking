@@ -1,11 +1,46 @@
 // Configuration
+// TIMEZONE: Asia/Kolkata (IST, GMT+5:30) - All timestamps and display use this timezone
 const GET_URL = 'https://script.google.com/macros/s/AKfycbxbJVJnTyQE92cbTEp6sxaBYt0LeU50wFHciU-gL3WxH0S02jux9UWIXDnC41ddWPyA/exec';
 const POST_URL = 'https://script.google.com/macros/s/AKfycbxbJVJnTyQE92cbTEp6sxaBYt0LeU50wFHciU-gL3WxH0S02jux9UWIXDnC41ddWPyA/exec';
+const IST_TIMEZONE = 'Asia/Kolkata'; // GMT+5:30
 
 let allBookings = [];
 let currentWeekStart = {};
 let currentUser = null;
 let currentEventId = null;
+
+// Helper function to get IST time
+function getISTTime(date) {
+    const istFormatter = new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        timeZone: IST_TIMEZONE
+    });
+    
+    const parts = istFormatter.formatToParts(date);
+    const istDate = new Date();
+    
+    const yearPart = parts.find(p => p.type === 'year')?.value;
+    const monthPart = parts.find(p => p.type === 'month')?.value;
+    const dayPart = parts.find(p => p.type === 'day')?.value;
+    const hourPart = parts.find(p => p.type === 'hour')?.value;
+    const minutePart = parts.find(p => p.type === 'minute')?.value;
+    const secondPart = parts.find(p => p.type === 'second')?.value;
+    
+    istDate.setFullYear(yearPart);
+    istDate.setMonth(monthPart - 1);
+    istDate.setDate(dayPart);
+    istDate.setHours(hourPart);
+    istDate.setMinutes(minutePart);
+    istDate.setSeconds(secondPart);
+    
+    return istDate;
+}
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -21,6 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeDateTimeValidation();
     loadBookings();
     setInterval(loadBookings, 30000);
+    initializeTabsAutoScroll();
 });
 
 function openDialog(opts) {
@@ -175,17 +211,22 @@ function updateClock() {
     
     clocks.forEach(clock => {
         const type = clock.dataset.clock;
+        const weekdayFormatter = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: IST_TIMEZONE });
+        const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: IST_TIMEZONE });
+        const timeFormatter = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: IST_TIMEZONE });
+        
+        const weekday = weekdayFormatter.format(now);
+        const date = dateFormatter.format(now);
+        const time = timeFormatter.format(now);
+        
         if (type === 'global') {
-            const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
-            const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-            const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             clock.textContent = `${weekday}, ${date} • ${time}`;
         } else {
-            const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const date = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             clock.textContent = `${time} • ${date}`;
         }
     });
+    
+    updateCurrentTimeLine();
 }
 
 // Booking Functions
@@ -215,7 +256,11 @@ function normalizeBooking(booking) {
         bookedBy: booking.bookedBy || 'Unknown',
         note: booking.note || '',
         participants: booking.participants || '',
-        emailSent: booking.emailSent || false
+        emailSent: booking.emailSent || false,
+        createdBy: booking.createdBy || '',
+        updatedBy: booking.updatedBy || '',
+        createdAt: booking.createdAt || '',
+        updatedAt: booking.updatedAt || ''
     };
 }
 
@@ -275,9 +320,9 @@ function initializeWeekNavigation() {
             }
             
             if (action === 'prev-week') {
-                currentWeekStart[room] = addDays(currentWeekStart[room], -7);
+                currentWeekStart[room] = addDays(currentWeekStart[room], -1);
             } else if (action === 'next-week') {
-                currentWeekStart[room] = addDays(currentWeekStart[room], 7);
+                currentWeekStart[room] = addDays(currentWeekStart[room], 1);
             } else if (action === 'today') {
                 currentWeekStart[room] = getWeekStart(new Date());
             }
@@ -309,9 +354,8 @@ function initializeCalendarClicks() {
 
 function getWeekStart(date) {
     const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day;
-    return new Date(d.setDate(diff));
+    d.setHours(0, 0, 0, 0);
+    return d;
 }
 
 function addDays(date, days) {
@@ -321,9 +365,10 @@ function addDays(date, days) {
 }
 
 function formatWeekRange(weekStart) {
-    const weekEnd = addDays(weekStart, 6);
-    const startStr = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const endStr = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const dayBefore = addDays(weekStart, -1);
+    const dayAfter5 = addDays(weekStart, 5);
+    const startStr = dayBefore.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const endStr = dayAfter5.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     return `${startStr} - ${endStr}`;
 }
 
@@ -355,7 +400,7 @@ function renderCalendar(room) {
         const da = String(d.getDate()).padStart(2, '0');
         return `${y}-${m}-${da}`;
     };
-    for (let i = 0; i < 7; i++) {
+    for (let i = -1; i < 6; i++) {
         const date = addDays(weekStart, i);
         const dateStr = formatLocalDate(date);
         const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
@@ -374,7 +419,7 @@ function renderCalendar(room) {
     }
     html += `<div class="time-labels-column">${timeLabelsColumn}</div>`;
     
-    for (let day = 0; day < 7; day++) {
+    for (let day = -1; day < 6; day++) {
         const date = addDays(weekStart, day);
         const dateStr = formatLocalDate(date);
         const isToday = date.getTime() === today.getTime();
@@ -489,6 +534,44 @@ function refreshAllCalendars() {
             renderCalendar(room);
         }
     });
+    updateCurrentTimeLine();
+}
+
+function updateCurrentTimeLine() {
+    const now = new Date();
+    
+    // Get current IST time
+    const istFormatter = new Intl.DateTimeFormat('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: IST_TIMEZONE
+    });
+    
+    const timeParts = istFormatter.formatToParts(now);
+    const currentHour = parseInt(timeParts.find(p => p.type === 'hour').value);
+    const currentMinutes = parseInt(timeParts.find(p => p.type === 'minute').value);
+    
+    // Only show line if within calendar hours (8-19)
+    if (currentHour < 8 || currentHour >= 20) {
+        document.querySelectorAll('.current-time-line').forEach(line => line.remove());
+        return;
+    }
+    
+    // Calculate position: each hour is 60px, each minute is 1px
+    const offsetFromTop = (currentHour - 8) * 60 + currentMinutes;
+    
+    document.querySelectorAll('.day-column').forEach(column => {
+        // Remove existing line
+        const existingLine = column.querySelector('.current-time-line');
+        if (existingLine) existingLine.remove();
+        
+        // Add new line
+        const line = document.createElement('div');
+        line.className = 'current-time-line';
+        line.style.top = offsetFromTop + 'px';
+        column.appendChild(line);
+    });
 }
 
 // Summary View
@@ -560,13 +643,16 @@ function createBookingCard(booking, showRoom) {
 
 function formatDateTime(dateString) {
     const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
+    // Format in IST (Asia/Kolkata, GMT+5:30)
+    const formatter = new Intl.DateTimeFormat('en-US', {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        timeZone: 'Asia/Kolkata'
     });
+    return formatter.format(date);
 }
 
 function escapeHtml(text) {
@@ -784,11 +870,24 @@ function openModalWithTime(room, dateStr, hour) {
 }
 
 function toDateTimeLocal(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
+    // Convert to IST format for datetime-local input
+    const istFormatter = new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: IST_TIMEZONE
+    });
+    
+    const parts = istFormatter.formatToParts(date);
+    const year = parts.find(p => p.type === 'year')?.value;
+    const month = parts.find(p => p.type === 'month')?.value;
+    const day = parts.find(p => p.type === 'day')?.value;
+    const hours = parts.find(p => p.type === 'hour')?.value;
+    const minutes = parts.find(p => p.type === 'minute')?.value;
+    
     return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
@@ -866,14 +965,18 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
         return;
     }
     
+    // Extract room key from room name (e.g., "Room A" -> "A")
+    const roomKey = room.replace('Room ', '').trim();
+    
     const booking = {
         action: isEditMode ? 'update' : 'create',
         room,
+        roomKey,
         title,
         start: start.toISOString(),
         end: end.toISOString(),
         bookedBy: currentUser.name,
-        organizerEmail: currentUser.email || '',
+        createdBy: currentUser.name,
         note: note || '',
         participants: participants || '',
         sendEmail: sendEmail
@@ -881,6 +984,7 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
     
     if (isEditMode) {
         booking.id = bookingId;
+        booking.updatedBy = currentUser.name;
     }
     
     const submitBtn = form.querySelector('button[type="submit"]');

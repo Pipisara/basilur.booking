@@ -5,6 +5,7 @@
 // Enable Gmail API in Advanced Google Services
 // Version: 3.2 without ICS files
 // Last Updated: 2024-11-13
+// TIMEZONE: Asia/Kolkata (IST, GMT+5:30) - Used for all timestamp operations
 // ============================================================================
 
 /**
@@ -16,6 +17,10 @@ function doGet(e) {
     
     if (action === 'auth') {
       return handleAuthentication(e);
+    }
+    
+    if (action === 'getRoomSchedule') {
+      return handleGetRoomSchedule(e);
     }
     
     // Return all bookings
@@ -124,6 +129,85 @@ function handleAuthentication(e) {
       .createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid credentials' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+/**
+ * Handle getting room schedule (for display boards)
+ */
+function handleGetRoomSchedule(e) {
+  const roomKey = e.parameter && e.parameter.room ? e.parameter.room : '';
+  
+  if (!roomKey) {
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        status: 'error',
+        message: 'Room key is required'
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  const sheet = getOrCreateBookingsSheet();
+  const data = sheet.getDataRange().getValues();
+  const now = new Date();
+  
+  let currentMeeting = null;
+  const upcomingMeetings = [];
+  
+  // Filter bookings by room and time
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    
+    // Column indices based on: id, room, roomKey, title, start, end, bookedBy, note, participants, emailSent, createdBy, updatedBy, createdAt, updatedAt
+    const bookingRoomKey = row[2] || '';
+    
+    if (bookingRoomKey.toString() !== roomKey.toString()) {
+      continue;
+    }
+    
+    const start = new Date(row[4]);
+    const end = new Date(row[5]);
+    
+    // Check if meeting is currently active
+    if (now >= start && now < end) {
+      currentMeeting = {
+        id: row[0] || '',
+        room: row[1] || '',
+        roomKey: row[2] || '',
+        title: row[3] || '',
+        start: row[4] || '',
+        end: row[5] || '',
+        bookedBy: row[6] || '',
+        note: row[7] || '',
+        participants: row[8] || ''
+      };
+    }
+    // Check if meeting is in the future (today)
+    else if (now < start && start.toDateString() === now.toDateString()) {
+      upcomingMeetings.push({
+        id: row[0] || '',
+        room: row[1] || '',
+        roomKey: row[2] || '',
+        title: row[3] || '',
+        start: row[4] || '',
+        end: row[5] || '',
+        bookedBy: row[6] || '',
+        note: row[7] || '',
+        participants: row[8] || ''
+      });
+    }
+  }
+  
+  // Sort upcoming meetings by start time
+  upcomingMeetings.sort((a, b) => new Date(a.start) - new Date(b.start));
+  
+  return ContentService
+    .createTextOutput(JSON.stringify({
+      status: 'success',
+      currentMeeting: currentMeeting,
+      upcomingMeetings: upcomingMeetings,
+      timestamp: formatDateAsIST(now, 'yyyy-MM-dd HH:mm:ss')
+    }))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 /**
@@ -261,7 +345,7 @@ function handleCreate(sheet, booking) {
     emailSent,
     booking.createdBy || booking.bookedBy || '',
     '',
-    now.toISOString(),
+    formatDateAsIST(now, 'yyyy-MM-dd HH:mm:ss'),
     ''
   ]);
   
@@ -353,7 +437,7 @@ function handleUpdate(sheet, booking) {
     existingCreatedBy || '',
     booking.updatedBy || booking.submittedBy || '',
     existingCreatedAt || '',
-    now.toISOString()
+    formatDateAsIST(now, 'yyyy-MM-dd HH:mm:ss')
   ]]);
   
   // Send updated invitation if requested
@@ -458,15 +542,16 @@ function sendMeetingInvitation(booking, bookingId, isUpdate) {
   const startDate = new Date(booking.start);
   const endDate = new Date(booking.end);
   
-  // Format dates for display
-  const formattedDate = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'EEEE, MMMM dd, yyyy');
-  const formattedStartTime = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'hh:mm a');
-  const formattedEndTime = Utilities.formatDate(endDate, Session.getScriptTimeZone(), 'hh:mm a');
+  // Format dates for display (GMT+5:30 / IST)
+  const IST_TIMEZONE = 'Asia/Kolkata';
+  const formattedDate = Utilities.formatDate(startDate, IST_TIMEZONE, 'EEEE, MMMM dd, yyyy');
+  const formattedStartTime = Utilities.formatDate(startDate, IST_TIMEZONE, 'hh:mm a');
+  const formattedEndTime = Utilities.formatDate(endDate, IST_TIMEZONE, 'hh:mm a');
   
   // Format dates for Google Calendar URL
-  const gcalDate = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'yyyyMMdd');
-  const gcalStartTime = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'HHmmss');
-  const gcalEndTime = Utilities.formatDate(endDate, Session.getScriptTimeZone(), 'HHmmss');
+  const gcalDate = Utilities.formatDate(startDate, IST_TIMEZONE, 'yyyyMMdd');
+  const gcalStartTime = Utilities.formatDate(startDate, IST_TIMEZONE, 'HHmmss');
+  const gcalEndTime = Utilities.formatDate(endDate, IST_TIMEZONE, 'HHmmss');
   
   const subject = (isUpdate ? '[UPDATED] ' : '') + 'Meeting Invitation: ' + booking.title;
   
@@ -510,8 +595,9 @@ function sendCancellationEmail(bookingData, bookingId, deletedBy) {
   if (emails.length === 0) return;
   
   const startDate = new Date(bookingData.start);
-  const formattedDate = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'EEEE, MMMM dd, yyyy');
-  const formattedStartTime = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'hh:mm a');
+  const IST_TIMEZONE = 'Asia/Kolkata';
+  const formattedDate = Utilities.formatDate(startDate, IST_TIMEZONE, 'EEEE, MMMM dd, yyyy');
+  const formattedStartTime = Utilities.formatDate(startDate, IST_TIMEZONE, 'hh:mm a');
   
   const subject = '[CANCELED] Meeting Canceled: ' + bookingData.title;
   
@@ -565,8 +651,7 @@ function getMeetingHtmlTemplate(isUpdate) {
           <!-- Header -->
           <tr>
             <td align="center" style="padding:20px;background:#2c5364;border-bottom:2px solid #00bcd4;">
-              <img src="//www.basilurtea.com/cdn/shop/files/Basilur.png" alt="Company Logo" width="60" style="display:block;margin-bottom:10px;">
-              <h1 style="color:#00bcd4;font-size:20px;margin:0;">${headerText}</h1>
+            <img src="https://www.basilurtea.com/cdn/shop/files/Basilur.png" alt="Company Logo" width="60" style="display:block;margin-bottom:10px;">              <h1 style="color:#00bcd4;font-size:20px;margin:0;">${headerText}</h1>
             </td>
           </tr>
 
@@ -650,7 +735,7 @@ function getCancellationHtmlTemplate() {
           <!-- Header -->
           <tr>
             <td align="center" style="padding:20px;background:#c62828;border-bottom:2px solid #ff5252;">
-              <img src="//www.basilurtea.com/cdn/shop/files/Basilur.png" alt="Company Logo" width="60" style="display:block;margin-bottom:10px;">
+              <img src="https://www.basilurtea.com/cdn/shop/files/Basilur.png" alt="Company Logo" width="60" style="display:block;margin-bottom:10px;">
               <h1 style="color:#ff5252;font-size:20px;margin:0;">&#10060; Meeting Canceled</h1>
             </td>
           </tr>
@@ -698,7 +783,7 @@ function getCancellationHtmlTemplate() {
 function logEmailSuccess(bookingId, meetingTitle, recipient, subject, status) {
   const emailLog = getOrCreateEmailLogSheet();
   emailLog.appendRow([
-    new Date().toISOString(),
+    formatDateAsIST(new Date(), 'yyyy-MM-dd HH:mm:ss'),
     bookingId,
     meetingTitle,
     recipient,
@@ -714,7 +799,7 @@ function logEmailSuccess(bookingId, meetingTitle, recipient, subject, status) {
 function logEmailError(bookingId, meetingTitle, recipient, subject, errorMessage) {
   const emailLog = getOrCreateEmailLogSheet();
   emailLog.appendRow([
-    new Date().toISOString(),
+    formatDateAsIST(new Date(), 'yyyy-MM-dd HH:mm:ss'),
     bookingId,
     meetingTitle,
     recipient,
@@ -796,11 +881,28 @@ function getBookingStats() {
     past: pastBookings,
     emailsSent: emailsSent,
     byRoom: roomStats,
-    generatedAt: now.toISOString()
+    generatedAt: formatDateAsIST(now, 'yyyy-MM-dd HH:mm:ss')
   };
   
   Logger.log(JSON.stringify(stats, null, 2));
   return stats;
+}
+
+/**
+ * Format date as IST (GMT+5:30) - Utility function
+ */
+function formatDateAsIST(dateInput, format) {
+  format = format || 'MM/dd/yyyy HH:mm:ss';
+  const IST_TIMEZONE = 'Asia/Kolkata';
+  const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  return Utilities.formatDate(date, IST_TIMEZONE, format);
+}
+
+/**
+ * Get current time in IST
+ */
+function getCurrentTimeIST() {
+  return formatDateAsIST(new Date(), 'yyyy-MM-dd\'T\'HH:mm:ss');
 }
 
 /**
