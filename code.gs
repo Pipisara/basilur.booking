@@ -3,7 +3,7 @@
 // ============================================================================
 // Deploy as Web App with "Anyone" access
 // Enable Gmail API in Advanced Google Services
-// Version: 3.1 with HTML Email Template
+// Version: 3.2 without ICS files
 // Last Updated: 2024-11-13
 // ============================================================================
 
@@ -458,9 +458,6 @@ function sendMeetingInvitation(booking, bookingId, isUpdate) {
   const startDate = new Date(booking.start);
   const endDate = new Date(booking.end);
   
-  // Create ICS file for Outlook/iCal
-  const icsUrl = createICSFile(booking, bookingId, startDate, endDate);
-  
   // Format dates for display
   const formattedDate = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'EEEE, MMMM dd, yyyy');
   const formattedStartTime = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'hh:mm a');
@@ -475,7 +472,6 @@ function sendMeetingInvitation(booking, bookingId, isUpdate) {
   
   // Build HTML email
   const emailHtml = getMeetingHtmlTemplate(isUpdate)
-    .replace(/{{ICS_FILE_URL}}/g, icsUrl)
     .replace(/{{MEETING_TITLE}}/g, booking.title)
     .replace(/{{MEETING_ROOM}}/g, booking.room)
     .replace(/{{MEETING_DATE}}/g, formattedDate)
@@ -502,40 +498,6 @@ function sendMeetingInvitation(booking, bookingId, isUpdate) {
       logEmailError(bookingId, booking.title, email, subject, error.toString());
     }
   });
-}
-
-/**
- * Create ICS file for Outlook/iCal integration
- */
-function createICSFile(booking, bookingId, startDate, endDate) {
-  const startUTC = Utilities.formatDate(startDate, Session.getScriptTimeZone(), "yyyyMMdd'T'HHmmss'Z'");
-  const endUTC = Utilities.formatDate(endDate, Session.getScriptTimeZone(), "yyyyMMdd'T'HHmmss'Z'");
-  
-  const icsContent = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//Meeting Room System//EN',
-    'BEGIN:VEVENT',
-    'UID:' + bookingId + '@meetingsystem.com',
-    'DTSTAMP:' + startUTC,
-    'DTSTART:' + startUTC,
-    'DTEND:' + endUTC,
-    'SUMMARY:' + booking.title,
-    'DESCRIPTION:' + (booking.note || ''),
-    'LOCATION:' + booking.room,
-    'ORGANIZER:CN=' + booking.bookedBy,
-    'END:VEVENT',
-    'END:VCALENDAR'
-  ].join('\r\n');
-  
-  try {
-    const file = DriveApp.createFile(booking.title + '_' + bookingId + '.ics', icsContent, MimeType.PLAIN_TEXT);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return file.getUrl();
-  } catch (error) {
-    Logger.log('Failed to create ICS file: ' + error.toString());
-    return '#';
-  }
 }
 
 /**
@@ -628,23 +590,14 @@ function getMeetingHtmlTemplate(isUpdate) {
                 Add this meeting to your calendar:
               </p>
 
-              <!-- Add to Calendar Buttons -->
+              <!-- Add to Calendar Button -->
               <table align="center" cellpadding="0" cellspacing="0" border="0" style="margin:auto;">
                 <tr>
-                  <!-- Google Calendar -->
-                  <td align="center" style="padding-right:10px;">
+                  <td align="center">
                     <a href="https://calendar.google.com/calendar/render?action=TEMPLATE&text={{MEETING_TITLE}}&dates={{GCAL_DATE}}T{{GCAL_START_TIME}}Z/{{GCAL_DATE}}T{{GCAL_END_TIME}}Z&details={{NOTES}}&location={{MEETING_ROOM}}&sf=true&output=xml"
                        target="_blank"
                        style="display:inline-block;padding:12px 20px;font-weight:600;font-size:14px;color:#ffffff;text-decoration:none;background:linear-gradient(135deg,#00bcd4,#2c5364);border-radius:8px;box-shadow:0 4px 15px rgba(0,188,212,0.3);">
-                      &#128197; Add to Google
-                    </a>
-                  </td>
-
-                  <!-- Outlook / iCal -->
-                  <td align="center" style="padding-left:10px;">
-                    <a href="{{ICS_FILE_URL}}" target="_blank"
-                       style="display:inline-block;padding:12px 20px;font-weight:600;font-size:14px;color:#ffffff;text-decoration:none;background:linear-gradient(135deg,#0078d4,#203a43);border-radius:8px;box-shadow:0 4px 15px rgba(0,120,212,0.3);">
-                      &#128198; Add to Outlook
+                        Add to Calendar
                     </a>
                   </td>
                 </tr>
@@ -659,7 +612,7 @@ function getMeetingHtmlTemplate(isUpdate) {
           <!-- Footer -->
           <tr>
             <td align="center" style="background:#203a43;padding:15px;border-top:1px solid rgba(245,245,245,0.08);font-size:12px;color:#b0b0b0;">
-              © 2025 Your Company. All rights reserved.
+              © 2025 Basilur Tea Export. All rights reserved.
             </td>
           </tr>
 
@@ -725,7 +678,7 @@ function getCancellationHtmlTemplate() {
           <!-- Footer -->
           <tr>
             <td align="center" style="background:#203a43;padding:15px;border-top:1px solid rgba(245,245,245,0.08);font-size:12px;color:#b0b0b0;">
-              © 2025 Your Company. All rights reserved.
+              © 2025 Basilur Tea Export. All rights reserved.
             </td>
           </tr>
 
@@ -861,7 +814,7 @@ function testEmail() {
     end: new Date(Date.now() + 90000000).toISOString(),
     bookedBy: 'Test User',
     note: 'This is a test email',
-    participants: 'your-email@example.com'  // Replace with your email
+    participants: 'pipisara.design@gmail.com'  // Replace with your email
   };
   
   try {
@@ -883,7 +836,7 @@ function testCancellationEmail() {
     end: new Date(Date.now() + 90000000).toISOString(),
     bookedBy: 'Test User',
     note: 'This is a test cancellation',
-    participants: 'your-email@example.com'  // Replace with your email
+    participants: 'pipisara.design@gmail.com'  // Replace with your email
   };
   
   try {

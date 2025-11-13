@@ -1,6 +1,6 @@
 // Configuration
-const GET_URL = 'https://script.google.com/macros/s/AKfycbz2YosDjwC_tUFFCVdTihbfiEJp7Yqfp8K7Clw8D3LwdefWOsH55RWrQH0l-yLiBSe0/exec';
-const POST_URL = 'https://script.google.com/macros/s/AKfycbz2YosDjwC_tUFFCVdTihbfiEJp7Yqfp8K7Clw8D3LwdefWOsH55RWrQH0l-yLiBSe0/exec';
+const GET_URL = 'https://script.google.com/macros/s/AKfycbxbJVJnTyQE92cbTEp6sxaBYt0LeU50wFHciU-gL3WxH0S02jux9UWIXDnC41ddWPyA/exec';
+const POST_URL = 'https://script.google.com/macros/s/AKfycbxbJVJnTyQE92cbTEp6sxaBYt0LeU50wFHciU-gL3WxH0S02jux9UWIXDnC41ddWPyA/exec';
 
 let allBookings = [];
 let currentWeekStart = {};
