@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     checkLoginStatus();
     initializeNoteAutosize();
     initializeParticipantsAutosize();
+    initializeDateTimeValidation();
     loadBookings();
     setInterval(loadBookings, 30000);
 });
@@ -293,6 +294,12 @@ function initializeCalendarClicks() {
             const date = hourCell.dataset.date;
             const hour = hourCell.dataset.hour;
             if (room && date && hour) {
+                const parts = String(date).split('-').map(Number);
+                const selected = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1, Number(hour), 0, 0, 0);
+                if (selected < new Date()) {
+                    showPopup('Selected time is in the past', 'warning');
+                    return;
+                }
                 openModalWithTime(room, date, hour);
             }
         }
@@ -731,6 +738,12 @@ function openModal(room) {
     modal.style.display = 'block';
     autosizeNote();
     autosizeParticipants();
+    const nowLocal = toDateTimeLocal(new Date());
+    const startInput = document.getElementById('startTime');
+    const endInput = document.getElementById('endTime');
+    if (startInput) startInput.min = nowLocal;
+    if (endInput) endInput.min = nowLocal;
+    validateDateTimeInputs();
 }
 
 function openModalWithTime(room, dateStr, hour) {
@@ -760,6 +773,12 @@ function openModalWithTime(room, dateStr, hour) {
     modal.style.display = 'block';
     autosizeNote();
     autosizeParticipants();
+    const nowLocal = toDateTimeLocal(new Date());
+    const startInput = document.getElementById('startTime');
+    const endInput = document.getElementById('endTime');
+    if (startInput) startInput.min = nowLocal;
+    if (endInput) endInput.min = startInput.value || nowLocal;
+    validateDateTimeInputs();
 }
 
 function toDateTimeLocal(date) {
@@ -820,6 +839,11 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
     
     const start = new Date(startTime);
     const end = new Date(endTime);
+    const now = new Date();
+    if (start < now) {
+        showPopup('Start time cannot be in the past', 'warning');
+        return;
+    }
     
     if (end <= start) {
         showPopup('End time must be after start time', 'warning');
@@ -890,6 +914,48 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
         }
     }
 });
+
+function validateDateTimeInputs() {
+    const form = document.getElementById('bookingForm');
+    const startInput = document.getElementById('startTime');
+    const endInput = document.getElementById('endTime');
+    const errorEl = document.getElementById('dateTimeError');
+    const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+    if (!startInput || !endInput) return;
+    const now = new Date();
+    const startVal = startInput.value;
+    const endVal = endInput.value;
+    let valid = true;
+    if (startVal) {
+        const s = new Date(startVal);
+        if (s < now) valid = false;
+    }
+    if (endVal && startVal) {
+        const s = new Date(startVal);
+        const e = new Date(endVal);
+        if (e <= s) valid = false;
+        if (e < now) valid = false;
+    }
+    if (endInput) endInput.min = startVal || toDateTimeLocal(now);
+    if (errorEl) {
+        errorEl.style.display = valid ? 'none' : 'block';
+        errorEl.textContent = 'Selected date/time is in the past';
+    }
+    if (submitBtn) submitBtn.disabled = !valid;
+}
+
+function initializeDateTimeValidation() {
+    const startInput = document.getElementById('startTime');
+    const endInput = document.getElementById('endTime');
+    if (!startInput || !endInput) return;
+    const nowLocal = toDateTimeLocal(new Date());
+    startInput.min = nowLocal;
+    endInput.min = nowLocal;
+    const handler = () => validateDateTimeInputs();
+    startInput.addEventListener('input', handler);
+    endInput.addEventListener('input', handler);
+    validateDateTimeInputs();
+}
 
 function initializeNoteAutosize() {
     const note = document.getElementById('note');
