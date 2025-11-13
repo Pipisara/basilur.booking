@@ -1,48 +1,32 @@
 // ============================================================================
-// Meeting Room Booking System - Google Apps Script Backend
+// Meeting Room Booking System with Gmail Integration - Google Apps Script
 // ============================================================================
-// Deploy this as a Web App with "Anyone" access
-// Version: 2.0
-// Last Updated: 2024-11-12
+// Deploy as Web App with "Anyone" access
+// Enable Gmail API in Advanced Google Services
+// Version: 3.1 with HTML Email Template
+// Last Updated: 2024-11-13
 // ============================================================================
 
 /**
- * Handle GET requests - Retrieve all bookings
- * @param {Object} e - Event object from GET request
- * @returns {TextOutput} JSON array of all bookings
+ * Handle GET requests - Retrieve all bookings or authenticate
  */
 function doGet(e) {
   try {
     const action = e && e.parameter && e.parameter.action ? e.parameter.action : 'bookings';
+    
     if (action === 'auth') {
-      const name = e.parameter && e.parameter.name ? e.parameter.name : '';
-      const accessCode = e.parameter && e.parameter.accessCode ? e.parameter.accessCode : '';
-      const usersSheet = getOrCreateUsersSheet();
-      const usersData = usersSheet.getDataRange().getValues();
-      let found = null;
-      for (let i = 1; i < usersData.length; i++) {
-        const row = usersData[i];
-        if (row[0] && String(row[0]).trim() === String(name).trim() && String(row[1]).trim() === String(accessCode).trim()) {
-          found = { name: row[0], email: row[2] || '', role: row[3] || 'user' };
-          break;
-        }
-      }
-      if (found) {
-        return ContentService
-          .createTextOutput(JSON.stringify({ status: 'success', user: found }))
-          .setMimeType(ContentService.MimeType.JSON);
-      } else {
-        return ContentService
-          .createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid credentials' }))
-          .setMimeType(ContentService.MimeType.JSON);
-      }
+      return handleAuthentication(e);
     }
+    
+    // Return all bookings
     const sheet = getOrCreateBookingsSheet();
     const data = sheet.getDataRange().getValues();
     const bookings = [];
+    
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
       if (!row[0]) continue;
+      
       bookings.push({
         id: row[0] || '',
         room: row[1] || '',
@@ -52,16 +36,21 @@ function doGet(e) {
         end: row[5] || '',
         bookedBy: row[6] || '',
         note: row[7] || '',
-        createdBy: row[8] || '',
-        updatedBy: row[9] || '',
-        createdAt: row[10] || '',
-        updatedAt: row[11] || ''
+        participants: row[8] || '',
+        emailSent: row[9] || false,
+        createdBy: row[10] || '',
+        updatedBy: row[11] || '',
+        createdAt: row[12] || '',
+        updatedAt: row[13] || ''
       });
     }
+    
     return ContentService
       .createTextOutput(JSON.stringify(bookings))
       .setMimeType(ContentService.MimeType.JSON);
+      
   } catch (error) {
+    Logger.log('doGet Error: ' + error.toString());
     return ContentService
       .createTextOutput(JSON.stringify({
         error: error.toString(),
@@ -72,20 +61,16 @@ function doGet(e) {
 }
 
 /**
- * Handle POST requests - Create or update bookings
- * @param {Object} e - Event object from POST request
- * @returns {TextOutput} JSON response with status
+ * Handle POST requests - Create, update, or delete bookings
  */
 function doPost(e) {
   try {
-    // Parse incoming booking data
     const booking = JSON.parse(e.postData.contents);
     const sheet = getOrCreateBookingsSheet();
     const action = booking.action || 'create';
     
-    Logger.log(`doPost: Action = ${action}, ID = ${booking.id || 'new'}`);
+    Logger.log('doPost: Action = ' + action + ', ID = ' + (booking.id || 'new'));
     
-    // Route to appropriate handler
     if (action === 'update') {
       return handleUpdate(sheet, booking);
     } else if (action === 'delete') {
@@ -95,7 +80,7 @@ function doPost(e) {
     }
     
   } catch (error) {
-    Logger.log(`doPost Error: ${error.toString()}`);
+    Logger.log('doPost Error: ' + error.toString());
     
     return ContentService
       .createTextOutput(JSON.stringify({
@@ -106,17 +91,58 @@ function doPost(e) {
   }
 }
 
+/**
+ * Handle user authentication
+ */
+function handleAuthentication(e) {
+  const name = e.parameter && e.parameter.name ? e.parameter.name : '';
+  const accessCode = e.parameter && e.parameter.accessCode ? e.parameter.accessCode : '';
+  
+  const usersSheet = getOrCreateUsersSheet();
+  const usersData = usersSheet.getDataRange().getValues();
+  
+  let found = null;
+  for (let i = 1; i < usersData.length; i++) {
+    const row = usersData[i];
+    if (row[0] && String(row[0]).trim() === String(name).trim() && 
+        String(row[1]).trim() === String(accessCode).trim()) {
+      found = { 
+        name: row[0], 
+        email: row[2] || '', 
+        role: row[3] || 'user' 
+      };
+      break;
+    }
+  }
+  
+  if (found) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'success', user: found }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } else {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid credentials' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+/**
+ * Get or create Users sheet
+ */
 function getOrCreateUsersSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('Users');
+  
   if (!sheet) {
     sheet = ss.insertSheet('Users');
     const headers = ['Name', 'Access Code', 'Email', 'Role', 'Created At', 'Updated At'];
     sheet.appendRow(headers);
+    
     const headerRange = sheet.getRange(1, 1, 1, headers.length);
     headerRange.setFontWeight('bold');
     headerRange.setBackground('#34a853');
     headerRange.setFontColor('#ffffff');
+    
     sheet.setColumnWidth(1, 200);
     sheet.setColumnWidth(2, 150);
     sheet.setColumnWidth(3, 250);
@@ -125,48 +151,35 @@ function getOrCreateUsersSheet() {
     sheet.setColumnWidth(6, 160);
     sheet.setFrozenRows(1);
   }
+  
   return sheet;
 }
 
 /**
- * Get existing Bookings sheet or create new one with headers
- * @returns {Sheet} The Bookings sheet
+ * Get or create Bookings sheet
  */
 function getOrCreateBookingsSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('Bookings');
   
-  // Create sheet if it doesn't exist
   if (!sheet) {
     Logger.log('Creating new Bookings sheet with headers');
     
     sheet = ss.insertSheet('Bookings');
     
-    // Add header row
     const headers = [
-      'ID',
-      'Room',
-      'RoomKey',
-      'Title',
-      'Start',
-      'End',
-      'Booked By',
-      'Note',
-      'Created By',
-      'Updated By',
-      'Created At',
-      'Updated At'
+      'ID', 'Room', 'RoomKey', 'Title', 'Start', 'End', 
+      'Booked By', 'Note', 'Participants', 'Email Sent',
+      'Created By', 'Updated By', 'Created At', 'Updated At'
     ];
     
     sheet.appendRow(headers);
     
-    // Format header row
     const headerRange = sheet.getRange(1, 1, 1, headers.length);
     headerRange.setFontWeight('bold');
     headerRange.setBackground('#4285f4');
     headerRange.setFontColor('#ffffff');
     
-    // Set column widths
     sheet.setColumnWidth(1, 120);  // ID
     sheet.setColumnWidth(2, 80);   // Room
     sheet.setColumnWidth(3, 60);   // RoomKey
@@ -175,12 +188,49 @@ function getOrCreateBookingsSheet() {
     sheet.setColumnWidth(6, 150);  // End
     sheet.setColumnWidth(7, 150);  // Booked By
     sheet.setColumnWidth(8, 300);  // Note
-    sheet.setColumnWidth(9, 120);  // Created By
-    sheet.setColumnWidth(10, 120); // Updated By
-    sheet.setColumnWidth(11, 150); // Created At
-    sheet.setColumnWidth(12, 150); // Updated At
+    sheet.setColumnWidth(9, 300);  // Participants
+    sheet.setColumnWidth(10, 100); // Email Sent
+    sheet.setColumnWidth(11, 120); // Created By
+    sheet.setColumnWidth(12, 120); // Updated By
+    sheet.setColumnWidth(13, 150); // Created At
+    sheet.setColumnWidth(14, 150); // Updated At
     
-    // Freeze header row
+    sheet.setFrozenRows(1);
+  }
+  
+  return sheet;
+}
+
+/**
+ * Get or create Email Log sheet
+ */
+function getOrCreateEmailLogSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('Email Log');
+  
+  if (!sheet) {
+    sheet = ss.insertSheet('Email Log');
+    
+    const headers = [
+      'Timestamp', 'Booking ID', 'Meeting Title', 'Recipient Email', 
+      'Subject', 'Status', 'Error Message'
+    ];
+    
+    sheet.appendRow(headers);
+    
+    const headerRange = sheet.getRange(1, 1, 1, headers.length);
+    headerRange.setFontWeight('bold');
+    headerRange.setBackground('#ea4335');
+    headerRange.setFontColor('#ffffff');
+    
+    sheet.setColumnWidth(1, 150);  // Timestamp
+    sheet.setColumnWidth(2, 120);  // Booking ID
+    sheet.setColumnWidth(3, 200);  // Meeting Title
+    sheet.setColumnWidth(4, 250);  // Recipient Email
+    sheet.setColumnWidth(5, 300);  // Subject
+    sheet.setColumnWidth(6, 100);  // Status
+    sheet.setColumnWidth(7, 300);  // Error Message
+    
     sheet.setFrozenRows(1);
   }
   
@@ -189,33 +239,52 @@ function getOrCreateBookingsSheet() {
 
 /**
  * Create a new booking
- * @param {Sheet} sheet - The Bookings sheet
- * @param {Object} booking - Booking data
- * @returns {TextOutput} JSON response
  */
 function handleCreate(sheet, booking) {
   const now = new Date();
   const bookingId = now.getTime().toString();
   
-  Logger.log(`Creating booking: ${bookingId} - ${booking.title}`);
+  Logger.log('Creating booking: ' + bookingId + ' - ' + booking.title);
   
-  // Append new row with booking data
+  const emailSent = false;
+  
   sheet.appendRow([
-    bookingId,                                    // ID
-    booking.room || '',                           // Room
-    booking.roomKey || '',                        // RoomKey
-    booking.title || 'Untitled Meeting',          // Title
-    booking.start || '',                          // Start
-    booking.end || '',                            // End
-    booking.bookedBy || '',                       // Booked By
-    booking.note || '',                           // Note
-    booking.createdBy || booking.bookedBy || '',  // Created By
-    '',                                           // Updated By (empty for new)
-    now.toISOString(),                            // Created At
-    ''                                            // Updated At (empty for new)
+    bookingId,
+    booking.room || '',
+    booking.roomKey || '',
+    booking.title || 'Untitled Meeting',
+    booking.start || '',
+    booking.end || '',
+    booking.bookedBy || '',
+    booking.note || '',
+    booking.participants || '',
+    emailSent,
+    booking.createdBy || booking.bookedBy || '',
+    '',
+    now.toISOString(),
+    ''
   ]);
   
-  Logger.log(`Booking created successfully: ${bookingId}`);
+  // Send email invitations if requested
+  if (booking.sendEmail && booking.participants) {
+    try {
+      sendMeetingInvitation(booking, bookingId);
+      
+      // Update email sent status
+      const data = sheet.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0].toString() === bookingId.toString()) {
+          sheet.getRange(i + 1, 10).setValue(true);
+          break;
+        }
+      }
+    } catch (emailError) {
+      Logger.log('Email Error: ' + emailError.toString());
+      logEmailError(bookingId, booking.title, '', 'Failed to send invitation', emailError.toString());
+    }
+  }
+  
+  Logger.log('Booking created successfully: ' + bookingId);
   
   return ContentService
     .createTextOutput(JSON.stringify({
@@ -229,16 +298,12 @@ function handleCreate(sheet, booking) {
 
 /**
  * Update an existing booking
- * @param {Sheet} sheet - The Bookings sheet
- * @param {Object} booking - Updated booking data
- * @returns {TextOutput} JSON response
  */
 function handleUpdate(sheet, booking) {
   const bookingId = booking.id || booking.originalId;
   
   if (!bookingId) {
     Logger.log('Update failed: No booking ID provided');
-    
     return ContentService
       .createTextOutput(JSON.stringify({
         status: 'error',
@@ -250,17 +315,15 @@ function handleUpdate(sheet, booking) {
   const data = sheet.getDataRange().getValues();
   let rowIndex = -1;
   
-  // Find the row with matching ID
   for (let i = 1; i < data.length; i++) {
     if (data[i][0].toString() === bookingId.toString()) {
-      rowIndex = i + 1; // +1 because sheet rows are 1-indexed
+      rowIndex = i + 1;
       break;
     }
   }
   
   if (rowIndex === -1) {
-    Logger.log(`Update failed: Booking ${bookingId} not found`);
-    
+    Logger.log('Update failed: Booking ' + bookingId + ' not found');
     return ContentService
       .createTextOutput(JSON.stringify({
         status: 'error',
@@ -269,29 +332,42 @@ function handleUpdate(sheet, booking) {
       .setMimeType(ContentService.MimeType.JSON);
   }
   
-  Logger.log(`Updating booking: ${bookingId} at row ${rowIndex}`);
+  Logger.log('Updating booking: ' + bookingId + ' at row ' + rowIndex);
   
   const now = new Date();
-  const existingCreatedAt = data[rowIndex - 1][10];
-  const existingCreatedBy = data[rowIndex - 1][8];
+  const existingCreatedAt = data[rowIndex - 1][12];
+  const existingCreatedBy = data[rowIndex - 1][10];
+  const existingEmailSent = data[rowIndex - 1][9];
   
-  // Update the entire row
-  sheet.getRange(rowIndex, 1, 1, 12).setValues([[
-    bookingId,                                    // ID (keep same)
-    booking.room || '',                           // Room
-    booking.roomKey || '',                        // RoomKey
-    booking.title || 'Untitled Meeting',          // Title
-    booking.start || '',                          // Start
-    booking.end || '',                            // End
-    booking.bookedBy || '',                       // Booked By
-    booking.note || '',                           // Note
-    existingCreatedBy || '',                      // Created By (preserve)
-    booking.updatedBy || booking.submittedBy || '', // Updated By
-    existingCreatedAt || '',                      // Created At (preserve)
-    now.toISOString()                             // Updated At
+  sheet.getRange(rowIndex, 1, 1, 14).setValues([[
+    bookingId,
+    booking.room || '',
+    booking.roomKey || '',
+    booking.title || 'Untitled Meeting',
+    booking.start || '',
+    booking.end || '',
+    booking.bookedBy || '',
+    booking.note || '',
+    booking.participants || '',
+    existingEmailSent,
+    existingCreatedBy || '',
+    booking.updatedBy || booking.submittedBy || '',
+    existingCreatedAt || '',
+    now.toISOString()
   ]]);
   
-  Logger.log(`Booking updated successfully: ${bookingId}`);
+  // Send updated invitation if requested
+  if (booking.sendEmail && booking.participants) {
+    try {
+      sendMeetingInvitation(booking, bookingId, true);
+      sheet.getRange(rowIndex, 10).setValue(true);
+    } catch (emailError) {
+      Logger.log('Email Error: ' + emailError.toString());
+      logEmailError(bookingId, booking.title, '', 'Failed to send update', emailError.toString());
+    }
+  }
+  
+  Logger.log('Booking updated successfully: ' + bookingId);
   
   return ContentService
     .createTextOutput(JSON.stringify({
@@ -305,9 +381,6 @@ function handleUpdate(sheet, booking) {
 
 /**
  * Delete a booking
- * @param {Sheet} sheet - The Bookings sheet
- * @param {Object} booking - Booking data with ID
- * @returns {TextOutput} JSON response
  */
 function handleDelete(sheet, booking) {
   const bookingId = booking.id;
@@ -323,11 +396,20 @@ function handleDelete(sheet, booking) {
   
   const data = sheet.getDataRange().getValues();
   let rowIndex = -1;
+  let bookingData = null;
   
-  // Find the row with matching ID
   for (let i = 1; i < data.length; i++) {
     if (data[i][0].toString() === bookingId.toString()) {
       rowIndex = i + 1;
+      bookingData = {
+        title: data[i][3],
+        start: data[i][4],
+        end: data[i][5],
+        room: data[i][1],
+        bookedBy: data[i][6],
+        participants: data[i][8],
+        note: data[i][7]
+      };
       break;
     }
   }
@@ -341,7 +423,17 @@ function handleDelete(sheet, booking) {
       .setMimeType(ContentService.MimeType.JSON);
   }
   
-  Logger.log(`Deleting booking: ${bookingId} at row ${rowIndex}`);
+  // Send cancellation email before deleting
+  if (booking.sendCancellation && bookingData && bookingData.participants) {
+    try {
+      sendCancellationEmail(bookingData, bookingId, booking.deletedBy || 'Unknown');
+    } catch (emailError) {
+      Logger.log('Cancellation Email Error: ' + emailError.toString());
+      logEmailError(bookingId, bookingData.title, '', 'Failed to send cancellation', emailError.toString());
+    }
+  }
+  
+  Logger.log('Deleting booking: ' + bookingId + ' at row ' + rowIndex);
   sheet.deleteRow(rowIndex);
   
   return ContentService
@@ -354,13 +446,337 @@ function handleDelete(sheet, booking) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+/**
+ * Send meeting invitation email with HTML template
+ */
+function sendMeetingInvitation(booking, bookingId, isUpdate) {
+  if (!booking.participants) return;
+  
+  const emails = booking.participants.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
+  if (emails.length === 0) return;
+  
+  const startDate = new Date(booking.start);
+  const endDate = new Date(booking.end);
+  
+  // Create ICS file for Outlook/iCal
+  const icsUrl = createICSFile(booking, bookingId, startDate, endDate);
+  
+  // Format dates for display
+  const formattedDate = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'EEEE, MMMM dd, yyyy');
+  const formattedStartTime = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'hh:mm a');
+  const formattedEndTime = Utilities.formatDate(endDate, Session.getScriptTimeZone(), 'hh:mm a');
+  
+  // Format dates for Google Calendar URL
+  const gcalDate = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'yyyyMMdd');
+  const gcalStartTime = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'HHmmss');
+  const gcalEndTime = Utilities.formatDate(endDate, Session.getScriptTimeZone(), 'HHmmss');
+  
+  const subject = (isUpdate ? '[UPDATED] ' : '') + 'Meeting Invitation: ' + booking.title;
+  
+  // Build HTML email
+  const emailHtml = getMeetingHtmlTemplate(isUpdate)
+    .replace(/{{ICS_FILE_URL}}/g, icsUrl)
+    .replace(/{{MEETING_TITLE}}/g, booking.title)
+    .replace(/{{MEETING_ROOM}}/g, booking.room)
+    .replace(/{{MEETING_DATE}}/g, formattedDate)
+    .replace(/{{START_TIME}}/g, formattedStartTime)
+    .replace(/{{END_TIME}}/g, formattedEndTime)
+    .replace(/{{ORGANIZER}}/g, booking.bookedBy)
+    .replace(/{{NOTES}}/g, booking.note || 'No additional notes')
+    .replace(/{{BOOKING_ID}}/g, bookingId)
+    .replace(/{{GCAL_DATE}}/g, gcalDate)
+    .replace(/{{GCAL_START_TIME}}/g, gcalStartTime)
+    .replace(/{{GCAL_END_TIME}}/g, gcalEndTime);
+  
+  // Send to each participant
+  emails.forEach(function(email) {
+    try {
+      GmailApp.sendEmail(email, subject, 'Please enable HTML to view this invitation.', {
+        htmlBody: emailHtml
+      });
+      
+      logEmailSuccess(bookingId, booking.title, email, subject, isUpdate ? 'Updated' : 'Scheduled');
+      Logger.log('Email sent to: ' + email);
+    } catch (error) {
+      Logger.log('Failed to send email to ' + email + ': ' + error.toString());
+      logEmailError(bookingId, booking.title, email, subject, error.toString());
+    }
+  });
+}
+
+/**
+ * Create ICS file for Outlook/iCal integration
+ */
+function createICSFile(booking, bookingId, startDate, endDate) {
+  const startUTC = Utilities.formatDate(startDate, Session.getScriptTimeZone(), "yyyyMMdd'T'HHmmss'Z'");
+  const endUTC = Utilities.formatDate(endDate, Session.getScriptTimeZone(), "yyyyMMdd'T'HHmmss'Z'");
+  
+  const icsContent = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Meeting Room System//EN',
+    'BEGIN:VEVENT',
+    'UID:' + bookingId + '@meetingsystem.com',
+    'DTSTAMP:' + startUTC,
+    'DTSTART:' + startUTC,
+    'DTEND:' + endUTC,
+    'SUMMARY:' + booking.title,
+    'DESCRIPTION:' + (booking.note || ''),
+    'LOCATION:' + booking.room,
+    'ORGANIZER:CN=' + booking.bookedBy,
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+  
+  try {
+    const file = DriveApp.createFile(booking.title + '_' + bookingId + '.ics', icsContent, MimeType.PLAIN_TEXT);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return file.getUrl();
+  } catch (error) {
+    Logger.log('Failed to create ICS file: ' + error.toString());
+    return '#';
+  }
+}
+
+/**
+ * Send cancellation email
+ */
+function sendCancellationEmail(bookingData, bookingId, deletedBy) {
+  if (!bookingData.participants) return;
+  
+  const emails = bookingData.participants.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
+  if (emails.length === 0) return;
+  
+  const startDate = new Date(bookingData.start);
+  const formattedDate = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'EEEE, MMMM dd, yyyy');
+  const formattedStartTime = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'hh:mm a');
+  
+  const subject = '[CANCELED] Meeting Canceled: ' + bookingData.title;
+  
+  const emailHtml = getCancellationHtmlTemplate()
+    .replace(/{{MEETING_TITLE}}/g, bookingData.title)
+    .replace(/{{MEETING_ROOM}}/g, bookingData.room)
+    .replace(/{{MEETING_DATE}}/g, formattedDate)
+    .replace(/{{START_TIME}}/g, formattedStartTime)
+    .replace(/{{CANCELED_BY}}/g, deletedBy)
+    .replace(/{{BOOKING_ID}}/g, bookingId);
+  
+  emails.forEach(function(email) {
+    try {
+      GmailApp.sendEmail(email, subject, 'Please enable HTML to view this cancellation notice.', {
+        htmlBody: emailHtml
+      });
+      
+      logEmailSuccess(bookingId, bookingData.title, email, subject, 'Canceled');
+      Logger.log('Cancellation email sent to: ' + email);
+    } catch (error) {
+      Logger.log('Failed to send cancellation email to ' + email + ': ' + error.toString());
+      logEmailError(bookingId, bookingData.title, email, subject, error.toString());
+    }
+  });
+}
+
+/**
+ * HTML Template for Meeting Invitation
+ */
+function getMeetingHtmlTemplate(isUpdate) {
+  const headerText = isUpdate ? 'Meeting Updated' : 'Meeting Invitation';
+  const introText = isUpdate ? 'This meeting has been <strong style="color:#ff9800;">UPDATED</strong>. Please note the new details:' : 'You have been invited to a meeting:';
+  
+  return `
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" href="//www.basilurtea.com/cdn/shop/files/Basilur.png" type="image/png">
+<link rel="apple-touch-icon" href="//www.basilurtea.com/cdn/shop/files/Basilur.png">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${headerText}</title>
+</head>
+<body style="margin:0;padding:0;background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);font-family:'Poppins',sans-serif;color:#f5f5f5;">
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:rgba(15,32,39,0.95);border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.4);">
+
+          <!-- Header -->
+          <tr>
+            <td align="center" style="padding:20px;background:#2c5364;border-bottom:2px solid #00bcd4;">
+              <img src="//www.basilurtea.com/cdn/shop/files/Basilur.png" alt="Company Logo" width="60" style="display:block;margin-bottom:10px;">
+              <h1 style="color:#00bcd4;font-size:20px;margin:0;">${headerText}</h1>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:30px 40px;">
+              <p style="font-size:16px;margin-bottom:10px;">${introText}</p>
+
+              <div style="background:rgba(32,58,67,0.9);padding:20px;border-radius:10px;border:1px solid rgba(0,188,212,0.35);margin-bottom:25px;line-height:1.6;">
+                <p style="margin:0 0 8px;"><strong style="color:#00bcd4;">&#128197; Meeting:</strong> {{MEETING_TITLE}}</p>
+                <p style="margin:0 0 8px;"><strong style="color:#00bcd4;">&#127970; Room:</strong> {{MEETING_ROOM}}</p>
+                <p style="margin:0 0 8px;"><strong style="color:#00bcd4;">&#128198; Date:</strong> {{MEETING_DATE}}</p>
+                <p style="margin:0 0 8px;"><strong style="color:#00bcd4;">&#128336; Start Time:</strong> {{START_TIME}}</p>
+                <p style="margin:0 0 8px;"><strong style="color:#00bcd4;">&#128337; End Time:</strong> {{END_TIME}}</p>
+                <p style="margin:0 0 8px;"><strong style="color:#00bcd4;">&#128100; Organized by:</strong> {{ORGANIZER}}</p>
+                <p style="margin:15px 0 8px;"><strong style="color:#00bcd4;">&#128221; Notes:</strong> {{NOTES}}</p>
+                <p style="margin:10px 0 0;font-size:14px;color:#b0b0b0;">Booking ID: {{BOOKING_ID}}</p>
+              </div>
+
+              <p style="font-size:15px;color:#b0b0b0;margin-bottom:20px;text-align:center;">
+                Add this meeting to your calendar:
+              </p>
+
+              <!-- Add to Calendar Buttons -->
+              <table align="center" cellpadding="0" cellspacing="0" border="0" style="margin:auto;">
+                <tr>
+                  <!-- Google Calendar -->
+                  <td align="center" style="padding-right:10px;">
+                    <a href="https://calendar.google.com/calendar/render?action=TEMPLATE&text={{MEETING_TITLE}}&dates={{GCAL_DATE}}T{{GCAL_START_TIME}}Z/{{GCAL_DATE}}T{{GCAL_END_TIME}}Z&details={{NOTES}}&location={{MEETING_ROOM}}&sf=true&output=xml"
+                       target="_blank"
+                       style="display:inline-block;padding:12px 20px;font-weight:600;font-size:14px;color:#ffffff;text-decoration:none;background:linear-gradient(135deg,#00bcd4,#2c5364);border-radius:8px;box-shadow:0 4px 15px rgba(0,188,212,0.3);">
+                      &#128197; Add to Google
+                    </a>
+                  </td>
+
+                  <!-- Outlook / iCal -->
+                  <td align="center" style="padding-left:10px;">
+                    <a href="{{ICS_FILE_URL}}" target="_blank"
+                       style="display:inline-block;padding:12px 20px;font-weight:600;font-size:14px;color:#ffffff;text-decoration:none;background:linear-gradient(135deg,#0078d4,#203a43);border-radius:8px;box-shadow:0 4px 15px rgba(0,120,212,0.3);">
+                      &#128198; Add to Outlook
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="font-size:13px;color:#888;margin-top:25px;text-align:center;">
+                Please mark your calendar accordingly.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="background:#203a43;padding:15px;border-top:1px solid rgba(245,245,245,0.08);font-size:12px;color:#b0b0b0;">
+              © 2025 Your Company. All rights reserved.
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
+`;
+}
+
+/**
+ * HTML Template for Meeting Cancellation
+ */
+function getCancellationHtmlTemplate() {
+  return `
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" href="//www.basilurtea.com/cdn/shop/files/Basilur.png" type="image/png">
+<link rel="apple-touch-icon" href="//www.basilurtea.com/cdn/shop/files/Basilur.png">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meeting Canceled</title>
+</head>
+<body style="margin:0;padding:0;background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);font-family:'Poppins',sans-serif;color:#f5f5f5;">
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:rgba(15,32,39,0.95);border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.4);">
+
+          <!-- Header -->
+          <tr>
+            <td align="center" style="padding:20px;background:#c62828;border-bottom:2px solid #ff5252;">
+              <img src="//www.basilurtea.com/cdn/shop/files/Basilur.png" alt="Company Logo" width="60" style="display:block;margin-bottom:10px;">
+              <h1 style="color:#ff5252;font-size:20px;margin:0;">&#10060; Meeting Canceled</h1>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:30px 40px;">
+              <p style="font-size:16px;margin-bottom:10px;color:#ff5252;font-weight:600;">The following meeting has been CANCELED:</p>
+
+              <div style="background:rgba(32,58,67,0.9);padding:20px;border-radius:10px;border:1px solid rgba(255,82,82,0.35);margin-bottom:25px;line-height:1.6;">
+                <p style="margin:0 0 8px;"><strong style="color:#ff5252;">&#128197; Meeting:</strong> {{MEETING_TITLE}}</p>
+                <p style="margin:0 0 8px;"><strong style="color:#ff5252;">&#127970; Room:</strong> {{MEETING_ROOM}}</p>
+                <p style="margin:0 0 8px;"><strong style="color:#ff5252;">&#128198; Date:</strong> {{MEETING_DATE}}</p>
+                <p style="margin:0 0 8px;"><strong style="color:#ff5252;">&#128336; Time:</strong> {{START_TIME}}</p>
+                <p style="margin:15px 0 8px;"><strong style="color:#ff5252;">&#10060; Canceled by:</strong> {{CANCELED_BY}}</p>
+                <p style="margin:10px 0 0;font-size:14px;color:#b0b0b0;">Booking ID: {{BOOKING_ID}}</p>
+              </div>
+
+              <p style="font-size:13px;color:#888;margin-top:25px;text-align:center;">
+                Please update your calendar accordingly.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="background:#203a43;padding:15px;border-top:1px solid rgba(245,245,245,0.08);font-size:12px;color:#b0b0b0;">
+              © 2025 Your Company. All rights reserved.
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
+`;
+}
+
+/**
+ * Log successful email
+ */
+function logEmailSuccess(bookingId, meetingTitle, recipient, subject, status) {
+  const emailLog = getOrCreateEmailLogSheet();
+  emailLog.appendRow([
+    new Date().toISOString(),
+    bookingId,
+    meetingTitle,
+    recipient,
+    subject,
+    status,
+    ''
+  ]);
+}
+
+/**
+ * Log email error
+ */
+function logEmailError(bookingId, meetingTitle, recipient, subject, errorMessage) {
+  const emailLog = getOrCreateEmailLogSheet();
+  emailLog.appendRow([
+    new Date().toISOString(),
+    bookingId,
+    meetingTitle,
+    recipient,
+    subject,
+    'Failed',
+    errorMessage
+  ]);
+}
+
 // ============================================================================
-// UTILITY FUNCTIONS (Optional - Run Manually)
+// UTILITY FUNCTIONS (Run Manually)
 // ============================================================================
 
 /**
  * Clean up old bookings (run manually or set up time-based trigger)
- * Deletes bookings that ended more than 30 days ago
  */
 function cleanupOldBookings() {
   const sheet = getOrCreateBookingsSheet();
@@ -369,9 +785,8 @@ function cleanupOldBookings() {
   const rowsToDelete = [];
   const daysToKeep = 30;
   
-  // Find rows with end times older than specified days
   for (let i = 1; i < data.length; i++) {
-    const endTime = new Date(data[i][5]); // End time column
+    const endTime = new Date(data[i][5]);
     const timeDiff = now - endTime;
     const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
     
@@ -380,34 +795,34 @@ function cleanupOldBookings() {
     }
   }
   
-  // Delete rows in reverse order to maintain correct indices
   for (let i = rowsToDelete.length - 1; i >= 0; i--) {
     sheet.deleteRow(rowsToDelete[i]);
   }
   
-  Logger.log(`Cleaned up ${rowsToDelete.length} bookings older than ${daysToKeep} days`);
+  Logger.log('Cleaned up ' + rowsToDelete.length + ' bookings older than ' + daysToKeep + ' days');
 }
 
 /**
- * Get booking statistics (run manually for insights)
+ * Get booking statistics
  */
 function getBookingStats() {
   const sheet = getOrCreateBookingsSheet();
   const data = sheet.getDataRange().getValues();
   const now = new Date();
   
-  let totalBookings = data.length - 1; // Exclude header
+  let totalBookings = data.length - 1;
   let upcomingBookings = 0;
   let runningBookings = 0;
   let pastBookings = 0;
+  let emailsSent = 0;
   let roomStats = {};
   
   for (let i = 1; i < data.length; i++) {
     const start = new Date(data[i][4]);
     const end = new Date(data[i][5]);
     const room = data[i][1];
+    const emailSent = data[i][9];
     
-    // Count by status
     if (now >= start && now < end) {
       runningBookings++;
     } else if (now < start) {
@@ -416,7 +831,8 @@ function getBookingStats() {
       pastBookings++;
     }
     
-    // Count by room
+    if (emailSent) emailsSent++;
+    
     roomStats[room] = (roomStats[room] || 0) + 1;
   }
   
@@ -425,6 +841,7 @@ function getBookingStats() {
     upcoming: upcomingBookings,
     running: runningBookings,
     past: pastBookings,
+    emailsSent: emailsSent,
     byRoom: roomStats,
     generatedAt: now.toISOString()
   };
@@ -434,50 +851,47 @@ function getBookingStats() {
 }
 
 /**
- * Test function - Creates sample bookings for testing
+ * Test email functionality
  */
-function createSampleBookings() {
-  const sheet = getOrCreateBookingsSheet();
-  const now = new Date();
+function testEmail() {
+  const testBooking = {
+    title: 'Test Meeting',
+    room: 'Room A',
+    start: new Date(Date.now() + 86400000).toISOString(),
+    end: new Date(Date.now() + 90000000).toISOString(),
+    bookedBy: 'Test User',
+    note: 'This is a test email',
+    participants: 'your-email@example.com'  // Replace with your email
+  };
   
-  const samples = [
-    {
-      room: 'Room A',
-      roomKey: 'A',
-      title: 'Daily Standup',
-      start: new Date(now.getTime() + 1 * 60 * 60 * 1000).toISOString(),
-      end: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(),
-      bookedBy: 'Admin',
-      note: 'Quick team sync',
-      createdBy: 'Admin'
-    },
-    {
-      room: 'Room B',
-      roomKey: 'B',
-      title: 'Client Presentation',
-      start: new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString(),
-      end: new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString(),
-      bookedBy: 'Manager',
-      note: 'Q4 review with stakeholders',
-      createdBy: 'Manager'
-    },
-    {
-      room: 'Room C',
-      roomKey: 'C',
-      title: 'Training Session',
-      start: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
-      end: new Date(now.getTime() + 26 * 60 * 60 * 1000).toISOString(),
-      bookedBy: 'Pipisara Chandrabhanu',
-      note: 'New employee onboarding',
-      createdBy: 'Pipisara Chandrabhanu'
-    }
-  ];
+  try {
+    sendMeetingInvitation(testBooking, 'TEST123', false);
+    Logger.log('Test email sent successfully!');
+  } catch (error) {
+    Logger.log('Test email failed: ' + error.toString());
+  }
+}
+
+/**
+ * Test cancellation email
+ */
+function testCancellationEmail() {
+  const testBooking = {
+    title: 'Test Meeting Cancellation',
+    room: 'Room A',
+    start: new Date(Date.now() + 86400000).toISOString(),
+    end: new Date(Date.now() + 90000000).toISOString(),
+    bookedBy: 'Test User',
+    note: 'This is a test cancellation',
+    participants: 'your-email@example.com'  // Replace with your email
+  };
   
-  samples.forEach(sample => {
-    handleCreate(sheet, sample);
-  });
-  
-  Logger.log(`Created ${samples.length} sample bookings`);
+  try {
+    sendCancellationEmail(testBooking, 'TEST456', 'Admin User');
+    Logger.log('Test cancellation email sent successfully!');
+  } catch (error) {
+    Logger.log('Test cancellation email failed: ' + error.toString());
+  }
 }
 
 // ============================================================================

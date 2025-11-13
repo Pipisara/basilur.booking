@@ -1,6 +1,6 @@
 // Configuration
-const GET_URL = 'https://script.google.com/macros/s/AKfycbxgx-yy7fk2-vuSCBcmI5Ug8SLXh2MS-EZ2SO_wILwPNpD0J3DXkM6RdogS5GYmOsDF/exec';
-const POST_URL = 'https://script.google.com/macros/s/AKfycbxgx-yy7fk2-vuSCBcmI5Ug8SLXh2MS-EZ2SO_wILwPNpD0J3DXkM6RdogS5GYmOsDF/exec';
+const GET_URL = 'https://script.google.com/macros/s/AKfycbz2YosDjwC_tUFFCVdTihbfiEJp7Yqfp8K7Clw8D3LwdefWOsH55RWrQH0l-yLiBSe0/exec';
+const POST_URL = 'https://script.google.com/macros/s/AKfycbz2YosDjwC_tUFFCVdTihbfiEJp7Yqfp8K7Clw8D3LwdefWOsH55RWrQH0l-yLiBSe0/exec';
 
 let allBookings = [];
 let currentWeekStart = {};
@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     startClock();
     checkLoginStatus();
     initializeNoteAutosize();
+    initializeParticipantsAutosize();
     loadBookings();
     setInterval(loadBookings, 30000);
 });
@@ -25,50 +26,25 @@ function openDialog(opts) {
     const existing = document.getElementById('appNotifyOverlay');
     const overlay = existing || document.createElement('div');
     overlay.id = 'appNotifyOverlay';
-    overlay.style.position = 'fixed';
-    overlay.style.top = '0';
-    overlay.style.left = '0';
-    overlay.style.right = '0';
-    overlay.style.bottom = '0';
-    overlay.style.background = 'rgba(0,0,0,0.35)';
-    overlay.style.display = 'flex';
-    overlay.style.alignItems = 'center';
-    overlay.style.justifyContent = 'center';
-    overlay.style.zIndex = '1000';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;z-index:1000;';
     const box = document.createElement('div');
-    box.style.maxWidth = '440px';
-    box.style.width = '90%';
-    box.style.borderRadius = '10px';
-    box.style.boxShadow = '0 10px 30px rgba(0,0,0,0.2)';
-    box.style.background = '#fff';
-    box.style.overflow = 'hidden';
+    box.style.cssText = 'max-width:440px;width:90%;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.2);background:#fff;overflow:hidden;';
     const header = document.createElement('div');
-    header.style.padding = '14px 18px';
-    header.style.fontWeight = '600';
-    header.style.color = '#fff';
+    header.style.cssText = 'padding:14px 18px;font-weight:600;color:#fff;';
     const type = opts.type || 'info';
     header.style.background = type === 'success' ? '#00bcd4' : type === 'error' ? '#c62828' : type === 'warning' ? '#ed6c02' : '#1976d2';
     header.textContent = type === 'success' ? 'Success' : type === 'error' ? 'Error' : type === 'warning' ? 'Warning' : 'Notice';
     const body = document.createElement('div');
-    body.style.padding = '18px';
-    body.style.color = '#333';
-    body.style.fontSize = '15px';
+    body.style.cssText = 'padding:18px;color:#333;font-size:15px;';
     body.textContent = opts.message || '';
     const actions = document.createElement('div');
-    actions.style.display = 'flex';
-    actions.style.gap = '10px';
-    actions.style.justifyContent = 'flex-end';
-    actions.style.padding = '12px 18px 18px';
+    actions.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;padding:12px 18px 18px;';
     const buttons = opts.buttons && opts.buttons.length ? opts.buttons : [{ label: 'OK', value: true, variant: 'primary' }];
     return new Promise(resolve => {
         buttons.forEach(b => {
             const btn = document.createElement('button');
             btn.textContent = b.label;
-            btn.style.padding = '8px 14px';
-            btn.style.borderRadius = '6px';
-            btn.style.border = 'none';
-            btn.style.cursor = 'pointer';
-            btn.style.fontWeight = '600';
+            btn.style.cssText = 'padding:8px 14px;border-radius:6px;border:none;cursor:pointer;font-weight:600;';
             btn.style.background = b.variant === 'danger' ? '#c62828' : b.variant === 'secondary' ? '#e0e0e0' : '#1976d2';
             btn.style.color = b.variant === 'secondary' ? '#333' : '#fff';
             btn.addEventListener('click', () => {
@@ -155,7 +131,6 @@ function logout() {
     currentUser = null;
     sessionStorage.removeItem('currentUser');
     updateUIForLogin();
-    
 }
 
 function checkLoginStatus() {
@@ -236,7 +211,9 @@ function normalizeBooking(booking) {
         start: booking.start,
         end: booking.end,
         bookedBy: booking.bookedBy || 'Unknown',
-        note: booking.note || ''
+        note: booking.note || '',
+        participants: booking.participants || '',
+        emailSent: booking.emailSent || false
     };
 }
 
@@ -364,9 +341,15 @@ function renderCalendar(room) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
+    const formatLocalDate = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const da = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${da}`;
+    };
     for (let i = 0; i < 7; i++) {
         const date = addDays(weekStart, i);
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = formatLocalDate(date);
         const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
         const dayNum = date.getDate();
         const isToday = date.getTime() === today.getTime();
@@ -385,7 +368,7 @@ function renderCalendar(room) {
     
     for (let day = 0; day < 7; day++) {
         const date = addDays(weekStart, day);
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = formatLocalDate(date);
         const isToday = date.getTime() === today.getTime();
         
         let dayColumnHtml = `<div class="day-column${isToday ? ' today' : ''}" data-room="${room}" data-date="${dateStr}">`;
@@ -491,65 +474,6 @@ function formatHour(hour) {
     return `${hour - 12} PM`;
 }
 
-function getBookingsForSlot(room, date, hour) {
-    const roomLabel = `Room ${room}`;
-    const slotStart = new Date(date);
-    slotStart.setHours(hour, 0, 0, 0);
-    const slotEnd = new Date(date);
-    slotEnd.setHours(hour + 1, 0, 0, 0);
-    
-    return allBookings.filter(booking => {
-        if (booking.room !== roomLabel) return false;
-        
-        const bookingStart = new Date(booking.start);
-        const bookingEnd = new Date(booking.end);
-        
-        return bookingStart < slotEnd && bookingEnd > slotStart;
-    });
-}
-
-function createCalendarBooking(booking, date, hour) {
-    const slotStart = new Date(date);
-    slotStart.setHours(hour, 0, 0, 0);
-    const slotEnd = new Date(date);
-    slotEnd.setHours(hour + 1, 0, 0, 0);
-    
-    const bookingStart = new Date(booking.start);
-    const bookingEnd = new Date(booking.end);
-    
-    let topPercent = 0;
-    let heightPercent = 100;
-    
-    if (bookingStart > slotStart) {
-        const minutesFromStart = (bookingStart - slotStart) / (1000 * 60);
-        topPercent = (minutesFromStart / 60) * 100;
-    }
-    
-    if (bookingEnd < slotEnd) {
-        const durationMinutes = (bookingEnd - bookingStart) / (1000 * 60);
-        heightPercent = (durationMinutes / 60) * 100;
-    } else if (bookingStart < slotStart) {
-        const durationInSlot = (bookingEnd - slotStart) / (1000 * 60);
-        heightPercent = Math.min((durationInSlot / 60) * 100, 100);
-        topPercent = 0;
-    }
-    
-    const now = new Date();
-    const isRunning = bookingStart <= now && bookingEnd > now;
-    
-    const startTime = bookingStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    const endTime = bookingEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    
-    return `
-        <div class="calendar-booking${isRunning ? ' running' : ''}" 
-             style="top: ${topPercent}%; height: ${heightPercent}%;"
-             onclick="viewBookingDetails('${booking.id}')">
-            <div class="calendar-booking-title">${escapeHtml(booking.title)}</div>
-            <div class="calendar-booking-time">${startTime} - ${endTime}</div>
-        </div>
-    `;
-}
-
 function refreshAllCalendars() {
     ['A', 'B', 'C'].forEach(room => {
         const calendarView = document.querySelector(`.calendar-view[data-room="${room}"]`);
@@ -568,7 +492,6 @@ function displaySummaryViews() {
     displayRoomSummary('B', upcomingBookings.filter(b => b.room === 'Room B'));
     displayRoomSummary('C', upcomingBookings.filter(b => b.room === 'Room C'));
     displayAllBookings(upcomingBookings);
-    // displayAllBookings(allBookings);
 }
 
 function displayRoomSummary(room, bookings) {
@@ -619,6 +542,7 @@ function createBookingCard(booking, showRoom) {
                 <span><strong>Booked by:</strong> ${escapeHtml(booking.bookedBy)}</span>
                 <span><strong>Start:</strong> ${formatDateTime(booking.start)}</span>
                 <span><strong>End:</strong> ${formatDateTime(booking.end)}</span>
+                ${booking.participants ? `<span><strong>Participants:</strong> ${escapeHtml(booking.participants)}</span>` : ''}
             </div>
             ${booking.note ? `<div class="booking-note"><strong>Note:</strong> ${escapeHtml(booking.note)}</div>` : ''}
         </div>
@@ -684,10 +608,22 @@ function viewBookingDetails(bookingId) {
                 <strong>End Time</strong>
                 <span>${formatDateTime(booking.end)}</span>
             </div>
+            ${booking.participants ? `
+            <div class="event-detail-row">
+                <strong>Participants</strong>
+                <span>${escapeHtml(booking.participants)}</span>
+            </div>
+            ` : ''}
             ${booking.note ? `
             <div class="event-detail-row">
                 <strong>Note</strong>
                 <span>${escapeHtml(booking.note)}</span>
+            </div>
+            ` : ''}
+            ${booking.emailSent ? `
+            <div class="event-detail-row">
+                <strong>Email Status</strong>
+                <span style="color: #00bcd4;">✓ Invitations sent</span>
             </div>
             ` : ''}
         </div>
@@ -733,16 +669,12 @@ function editBooking(bookingId) {
     document.getElementById('startTime').value = toDateTimeLocal(new Date(booking.start));
     document.getElementById('endTime').value = toDateTimeLocal(new Date(booking.end));
     document.getElementById('note').value = booking.note || '';
+    document.getElementById('participants').value = booking.participants || '';
     
-    const byGroup3 = document.getElementById('bookedByGroup');
-    const byInput3 = document.getElementById('bookedByDisplay');
-    if (byGroup3 && byInput3) {
-        byInput3.value = booking.bookedBy || '';
-        byGroup3.classList.remove('hidden');
-    }
     modal.querySelector('h2').textContent = 'Edit Booking';
     modal.style.display = 'block';
     autosizeNote();
+    autosizeParticipants();
 }
 
 async function deleteBooking(bookingId) {
@@ -752,7 +684,7 @@ async function deleteBooking(bookingId) {
         return;
     }
     
-    const confirmed = await showConfirm('Are you sure you want to delete this booking?', 'Delete');
+    const confirmed = await showConfirm('Are you sure you want to delete this booking? Cancellation emails will be sent to all participants.', 'Delete');
     if (!confirmed) {
         return;
     }
@@ -764,11 +696,13 @@ async function deleteBooking(bookingId) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'delete',
-                id: bookingId
+                id: bookingId,
+                sendCancellation: true,
+                deletedBy: currentUser ? currentUser.name : 'Unknown'
             })
         });
         
-        await showPopup('Booking deleted successfully', 'success');
+        await showPopup('Booking deleted successfully. Cancellation emails are being sent.', 'success');
         closeEventModal();
         setTimeout(loadBookings, 1500);
     } catch (error) {
@@ -792,15 +726,11 @@ function openModal(room) {
     delete form.dataset.bookingId;
     
     document.getElementById('room').value = `Room ${room}`;
-    const byGroup = document.getElementById('bookedByGroup');
-    const byInput = document.getElementById('bookedByDisplay');
-    if (byGroup && byInput) {
-        byGroup.classList.add('hidden');
-        byInput.value = '';
-    }
+    document.getElementById('sendEmailNotification').checked = true;
     modal.querySelector('h2').textContent = 'Add New Booking';
     modal.style.display = 'block';
     autosizeNote();
+    autosizeParticipants();
 }
 
 function openModalWithTime(room, dateStr, hour) {
@@ -818,24 +748,18 @@ function openModalWithTime(room, dateStr, hour) {
     
     document.getElementById('room').value = `Room ${room}`;
     
-    const startDate = new Date(dateStr);
-    startDate.setHours(hour, 0, 0, 0);
-    
-    const endDate = new Date(startDate);
-    endDate.setHours(hour + 1, 0, 0, 0);
+    const parts = String(dateStr).split('-').map(Number);
+    const startDate = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1, Number(hour), 0, 0, 0);
+    const endDate = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1, Number(hour) + 1, 0, 0, 0);
     
     document.getElementById('startTime').value = toDateTimeLocal(startDate);
     document.getElementById('endTime').value = toDateTimeLocal(endDate);
+    document.getElementById('sendEmailNotification').checked = true;
     
     modal.querySelector('h2').textContent = 'Add New Booking';
-    const byGroup2 = document.getElementById('bookedByGroup');
-    const byInput2 = document.getElementById('bookedByDisplay');
-    if (byGroup2 && byInput2) {
-        byGroup2.classList.add('hidden');
-        byInput2.value = '';
-    }
     modal.style.display = 'block';
     autosizeNote();
+    autosizeParticipants();
 }
 
 function toDateTimeLocal(date) {
@@ -853,16 +777,18 @@ function closeModal() {
     form.reset();
     delete form.dataset.editMode;
     delete form.dataset.bookingId;
-    form.querySelector('h2').textContent = 'Add New Booking';
 }
 
-window.onclick = function(event) {
+window.onclick = async function(event) {
     const bookingModal = document.getElementById('bookingModal');
     const eventModal = document.getElementById('eventModal');
     const loginModal = document.getElementById('loginModal');
     
     if (event.target === bookingModal) {
-        closeModal();
+        const confirmed = await showConfirm('Do you want to discard settings?', 'Discard');
+        if (confirmed) {
+            closeModal();
+        }
     } else if (event.target === eventModal) {
         closeEventModal();
     } else if (event.target === loginModal) {
@@ -889,6 +815,8 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
     const startTime = formData.get('startTime');
     const endTime = formData.get('endTime');
     const note = formData.get('note');
+    const participants = formData.get('participants');
+    const sendEmail = document.getElementById('sendEmailNotification').checked;
     
     const start = new Date(startTime);
     const end = new Date(endTime);
@@ -919,7 +847,10 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
         start: start.toISOString(),
         end: end.toISOString(),
         bookedBy: currentUser.name,
-        note: note || ''
+        organizerEmail: currentUser.email || '',
+        note: note || '',
+        participants: participants || '',
+        sendEmail: sendEmail
     };
     
     if (isEditMode) {
@@ -940,7 +871,12 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(booking)
         });
-        await showPopup(`Booking ${isEditMode ? 'updated' : 'submitted'} successfully`, 'success');
+        
+        const successMsg = isEditMode 
+            ? 'Booking updated successfully' + (sendEmail && participants ? '. Email notifications are being sent.' : '')
+            : 'Booking submitted successfully' + (sendEmail && participants ? '. Email invitations are being sent.' : '');
+        
+        await showPopup(successMsg, 'success');
         closeModal();
         setTimeout(loadBookings, 1500);
     } catch (error) {
@@ -974,4 +910,25 @@ function autosizeNote() {
     if (!note) return;
     note.style.height = 'auto';
     note.style.height = note.scrollHeight + 'px';
+}
+
+function initializeParticipantsAutosize() {
+    const participants = document.getElementById('participants');
+    if (!participants) return;
+    participants.style.overflowY = 'hidden';
+    participants.style.resize = 'none';
+    const handler = () => {
+        participants.style.height = 'auto';
+        participants.style.height = participants.scrollHeight + 'px';
+    };
+    participants.addEventListener('input', handler);
+    participants.addEventListener('change', handler);
+    handler();
+}
+
+function autosizeParticipants() {
+    const participants = document.getElementById('participants');
+    if (!participants) return;
+    participants.style.height = 'auto';
+    participants.style.height = participants.scrollHeight + 'px';
 }

@@ -217,6 +217,22 @@
                     <label for="note">Note <span style="color: #888; font-size: 0.85rem;">(optional)</span></label>
                     <textarea id="note" name="note" placeholder="Add agenda or notes"></textarea>
                 </div>
+                <div class="form-group">
+                    <label for="participants">
+                        Participant Emails 
+                        <span style="color: #888; font-size: 0.85rem;">(optional - comma separated)</span>
+                    </label>
+                    <textarea id="participants" name="participants" placeholder="email1@example.com, email2@example.com" rows="3"></textarea>
+                    <small style="color: #00bcd4; font-size: 0.8rem; margin-top: 0.25rem; display: block;">
+                        💡 Enter email addresses separated by commas. Invitations will be sent automatically.
+                    </small>
+                </div>
+                <div class="form-group email-notification-toggle">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="sendEmailNotification" name="sendEmailNotification" checked>
+                        <span>Send email invitations to participants</span>
+                    </label>
+                </div>
                 <button type="submit" class="submit-btn">Submit Booking</button>
             </form>
         </div>
