@@ -208,6 +208,7 @@ function normalizeBooking(booking) {
     return {
         id: booking.id || Date.now(),
         room: booking.room || 'Room A',
+        roomKey: booking.roomKey || (booking.room ? String(booking.room).replace('Room ', '') : ''),
         title: booking.title || 'Untitled Meeting',
         start: booking.start,
         end: booking.end,
@@ -538,6 +539,7 @@ function createBookingCard(booking, showRoom) {
     
     const statusLabel = status === 'running' ? 'Running' : status === 'upcoming' ? 'Upcoming' : 'Finished';
     
+    const roomLabel = getRoomDisplayName(booking);
     return `
         <div class="booking-card booking-status-${status}" onclick="viewBookingDetails('${booking.id}')" style="cursor: pointer;">
             <div class="booking-card-header">
@@ -545,7 +547,7 @@ function createBookingCard(booking, showRoom) {
                 <span class="status-badge status-badge-${status}">${statusLabel}</span>
             </div>
             <div class="booking-info">
-                ${showRoom ? `<span><strong>Room:</strong> ${escapeHtml(booking.room)}</span>` : ''}
+                ${showRoom ? `<span><strong>Room:</strong> ${escapeHtml(roomLabel)}</span>` : ''}
                 <span><strong>Booked by:</strong> ${escapeHtml(booking.bookedBy)}</span>
                 <span><strong>Start:</strong> ${formatDateTime(booking.start)}</span>
                 <span><strong>End:</strong> ${formatDateTime(booking.end)}</span>
@@ -597,7 +599,7 @@ function viewBookingDetails(bookingId) {
             </div>
             <div class="event-detail-row">
                 <strong>Room</strong>
-                <span>${escapeHtml(booking.room)}</span>
+                <span>${escapeHtml(getRoomDisplayName(booking))}</span>
             </div>
             <div class="event-detail-row">
                 <strong>Booked By</strong>
@@ -997,4 +999,13 @@ function autosizeParticipants() {
     if (!participants) return;
     participants.style.height = 'auto';
     participants.style.height = participants.scrollHeight + 'px';
+}
+
+function getRoomDisplayName(booking) {
+    const key = booking.roomKey || (booking.room && booking.room.replace('Room ', '')) || '';
+    if (key === 'A') return 'A- BLOCK A BOARDROOM';
+    if (key === 'B') return 'B- BLOCK C BOARDROOM';
+    if (key === 'C') return 'C-BLOCK D AUDITORIUM';
+    if (booking.room) return booking.room;
+    return 'Unknown Room';
 }
