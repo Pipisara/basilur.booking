@@ -340,13 +340,46 @@ function initializeCalendarClicks() {
             const date = hourCell.dataset.date;
             const hour = hourCell.dataset.hour;
             if (room && date && hour) {
+                // Get current IST time
+                const now = new Date();
+                const istFormatter = new Intl.DateTimeFormat('en-US', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                    timeZone: IST_TIMEZONE
+                });
+                
+                const timeParts = istFormatter.formatToParts(now);
+                const currentISTYear = parseInt(timeParts.find(p => p.type === 'year')?.value);
+                const currentISTMonth = parseInt(timeParts.find(p => p.type === 'month')?.value);
+                const currentISTDay = parseInt(timeParts.find(p => p.type === 'day')?.value);
+                const currentISTHour = parseInt(timeParts.find(p => p.type === 'hour')?.value);
+                const currentISTMinute = parseInt(timeParts.find(p => p.type === 'minute')?.value);
+                
+                // Parse selected slot date
                 const parts = String(date).split('-').map(Number);
-                const selected = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1, Number(hour), 0, 0, 0);
-                if (selected < new Date()) {
+                const slotYear = parts[0];
+                const slotMonth = parts[1] || 1;
+                const slotDay = parts[2] || 1;
+                const slotHour = Number(hour);
+                
+                // Check if selected slot is in the past (with 5-minute margin)
+                const isSlotToday = (slotYear === currentISTYear && slotMonth === currentISTMonth && slotDay === currentISTDay);
+                const isSlotHourInPast = isSlotToday && slotHour < currentISTHour;
+                const isPastDate = (slotYear < currentISTYear) || 
+                                  (slotYear === currentISTYear && slotMonth < currentISTMonth) ||
+                                  (slotYear === currentISTYear && slotMonth === currentISTMonth && slotDay < currentISTDay);
+                
+                if (isPastDate || isSlotHourInPast) {
                     showPopup('Selected time is in the past', 'warning');
                     return;
                 }
-                openModalWithTime(room, date, hour);
+                
+                // Allow booking with current IST time if slot is in current hour
+                openModalWithTime(room, date, hour, isSlotToday && slotHour === currentISTHour ? currentISTMinute : null);
             }
         }
     });
@@ -826,7 +859,30 @@ function openModal(room) {
     modal.style.display = 'block';
     autosizeNote();
     autosizeParticipants();
-    const nowLocal = toDateTimeLocal(new Date());
+    
+    // Get current IST time with 5-minute margin
+    const now = new Date();
+    const istFormatter = new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: IST_TIMEZONE
+    });
+    
+    const timeParts = istFormatter.formatToParts(now);
+    const currentISTYear = parseInt(timeParts.find(p => p.type === 'year')?.value);
+    const currentISTMonth = parseInt(timeParts.find(p => p.type === 'month')?.value);
+    const currentISTDay = parseInt(timeParts.find(p => p.type === 'day')?.value);
+    const currentISTHour = parseInt(timeParts.find(p => p.type === 'hour')?.value);
+    const currentISTMinute = parseInt(timeParts.find(p => p.type === 'minute')?.value);
+    
+    let currentIST = new Date(currentISTYear, currentISTMonth - 1, currentISTDay, currentISTHour, currentISTMinute, 0, 0);
+    currentIST.setMinutes(currentIST.getMinutes() - 5);
+    
+    const nowLocal = toDateTimeLocalIST(currentIST);
     const startInput = document.getElementById('startTime');
     const endInput = document.getElementById('endTime');
     if (startInput) startInput.min = nowLocal;
@@ -834,7 +890,7 @@ function openModal(room) {
     validateDateTimeInputs();
 }
 
-function openModalWithTime(room, dateStr, hour) {
+function openModalWithTime(room, dateStr, hour, startMinute = null) {
     if (!currentUser) {
         showPopup('Please login to create a booking', 'info');
         openLoginModal();
@@ -850,8 +906,13 @@ function openModalWithTime(room, dateStr, hour) {
     document.getElementById('room').value = `Room ${room}`;
     
     const parts = String(dateStr).split('-').map(Number);
-    const startDate = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1, Number(hour), 0, 0, 0);
-    const endDate = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1, Number(hour) + 1, 0, 0, 0);
+    // If startMinute is provided, use current IST minutes for start time
+    const startMinutes = startMinute !== null ? startMinute : 0;
+    const startDate = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1, Number(hour), startMinutes, 0, 0);
+    
+    // End time is always 1 hour after start time
+    const endDate = new Date(startDate);
+    endDate.setHours(endDate.getHours() + 1);
     
     document.getElementById('startTime').value = toDateTimeLocal(startDate);
     document.getElementById('endTime').value = toDateTimeLocal(endDate);
@@ -861,7 +922,30 @@ function openModalWithTime(room, dateStr, hour) {
     modal.style.display = 'block';
     autosizeNote();
     autosizeParticipants();
-    const nowLocal = toDateTimeLocal(new Date());
+    
+    // Get current IST time with 5-minute margin
+    const now = new Date();
+    const istFormatter = new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: IST_TIMEZONE
+    });
+    
+    const timeParts = istFormatter.formatToParts(now);
+    const currentISTYear = parseInt(timeParts.find(p => p.type === 'year')?.value);
+    const currentISTMonth = parseInt(timeParts.find(p => p.type === 'month')?.value);
+    const currentISTDay = parseInt(timeParts.find(p => p.type === 'day')?.value);
+    const currentISTHour = parseInt(timeParts.find(p => p.type === 'hour')?.value);
+    const currentISTMinute = parseInt(timeParts.find(p => p.type === 'minute')?.value);
+    
+    let currentIST = new Date(currentISTYear, currentISTMonth - 1, currentISTDay, currentISTHour, currentISTMinute, 0, 0);
+    currentIST.setMinutes(currentIST.getMinutes() - 5);
+    
+    const nowLocal = toDateTimeLocalIST(currentIST);
     const startInput = document.getElementById('startTime');
     const endInput = document.getElementById('endTime');
     if (startInput) startInput.min = nowLocal;
@@ -871,6 +955,28 @@ function openModalWithTime(room, dateStr, hour) {
 
 function toDateTimeLocal(date) {
     // Convert to IST format for datetime-local input
+    const istFormatter = new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: IST_TIMEZONE
+    });
+    
+    const parts = istFormatter.formatToParts(date);
+    const year = parts.find(p => p.type === 'year')?.value;
+    const month = parts.find(p => p.type === 'month')?.value;
+    const day = parts.find(p => p.type === 'day')?.value;
+    const hours = parts.find(p => p.type === 'hour')?.value;
+    const minutes = parts.find(p => p.type === 'minute')?.value;
+    
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function toDateTimeLocalIST(date) {
+    // Convert to IST format for datetime-local input (uses IST as reference timezone)
     const istFormatter = new Intl.DateTimeFormat('en-US', {
         year: 'numeric',
         month: '2-digit',
@@ -1028,24 +1134,57 @@ function validateDateTimeInputs() {
     const errorEl = document.getElementById('dateTimeError');
     const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
     if (!startInput || !endInput) return;
+    
+    // Get current IST time with 5-minute margin
     const now = new Date();
+    const istFormatter = new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: IST_TIMEZONE
+    });
+    
+    const timeParts = istFormatter.formatToParts(now);
+    const currentISTYear = parseInt(timeParts.find(p => p.type === 'year')?.value);
+    const currentISTMonth = parseInt(timeParts.find(p => p.type === 'month')?.value);
+    const currentISTDay = parseInt(timeParts.find(p => p.type === 'day')?.value);
+    const currentISTHour = parseInt(timeParts.find(p => p.type === 'hour')?.value);
+    const currentISTMinute = parseInt(timeParts.find(p => p.type === 'minute')?.value);
+    
+    // Create current IST time and subtract 5-minute margin (allowing bookings made up to 5 minutes before current time)
+    let currentIST = new Date(currentISTYear, currentISTMonth - 1, currentISTDay, currentISTHour, currentISTMinute, 0, 0);
+    currentIST.setMinutes(currentIST.getMinutes() - 5);
+    
     const startVal = startInput.value;
     const endVal = endInput.value;
     let valid = true;
+    let errorMsg = 'Selected date/time is in the past';
+    
     if (startVal) {
         const s = new Date(startVal);
-        if (s < now) valid = false;
+        if (s < currentIST) valid = false;
     }
+    
     if (endVal && startVal) {
         const s = new Date(startVal);
         const e = new Date(endVal);
-        if (e <= s) valid = false;
-        if (e < now) valid = false;
+        if (e <= s) {
+            valid = false;
+            errorMsg = 'End time must be after start time';
+        }
+        if (e < currentIST) {
+            valid = false;
+            errorMsg = 'Selected date/time is in the past';
+        }
     }
-    if (endInput) endInput.min = startVal || toDateTimeLocal(now);
+    
+    if (endInput) endInput.min = startVal || toDateTimeLocalIST(currentIST);
     if (errorEl) {
         errorEl.style.display = valid ? 'none' : 'block';
-        errorEl.textContent = 'Selected date/time is in the past';
+        errorEl.textContent = errorMsg;
     }
     if (submitBtn) submitBtn.disabled = !valid;
 }
@@ -1054,7 +1193,30 @@ function initializeDateTimeValidation() {
     const startInput = document.getElementById('startTime');
     const endInput = document.getElementById('endTime');
     if (!startInput || !endInput) return;
-    const nowLocal = toDateTimeLocal(new Date());
+    
+    // Get current IST time with 5-minute margin
+    const now = new Date();
+    const istFormatter = new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: IST_TIMEZONE
+    });
+    
+    const timeParts = istFormatter.formatToParts(now);
+    const currentISTYear = parseInt(timeParts.find(p => p.type === 'year')?.value);
+    const currentISTMonth = parseInt(timeParts.find(p => p.type === 'month')?.value);
+    const currentISTDay = parseInt(timeParts.find(p => p.type === 'day')?.value);
+    const currentISTHour = parseInt(timeParts.find(p => p.type === 'hour')?.value);
+    const currentISTMinute = parseInt(timeParts.find(p => p.type === 'minute')?.value);
+    
+    let currentIST = new Date(currentISTYear, currentISTMonth - 1, currentISTDay, currentISTHour, currentISTMinute, 0, 0);
+    currentIST.setMinutes(currentIST.getMinutes() - 5);
+    
+    const nowLocal = toDateTimeLocalIST(currentIST);
     startInput.min = nowLocal;
     endInput.min = nowLocal;
     const handler = () => validateDateTimeInputs();
