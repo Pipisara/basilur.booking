@@ -1,7 +1,7 @@
 // Configuration
 // TIMEZONE: Asia/Kolkata (IST, GMT+5:30) - All timestamps and display use this timezone
-const GET_URL = 'https://script.google.com/macros/s/AKfycbz9zQNNCBXRmVyVyXtJFvmO-TP-4hsKqMXP5if6hnnlhLjw6qVUDAKpt2DJ3IG19SPN/exec';
-const POST_URL = 'https://script.google.com/macros/s/AKfycbz9zQNNCBXRmVyVyXtJFvmO-TP-4hsKqMXP5if6hnnlhLjw6qVUDAKpt2DJ3IG19SPN/exec';
+const GET_URL = 'https://script.google.com/macros/s/AKfycbzqMkiBi29Ff36D94447o_JSDGofnxwVZt7rHFfozeSA0B3uBeh4kvqMuXP-tzcY3Kl/exec';
+const POST_URL = 'https://script.google.com/macros/s/AKfycbzqMkiBi29Ff36D94447o_JSDGofnxwVZt7rHFfozeSA0B3uBeh4kvqMuXP-tzcY3Kl/exec';
 const IST_TIMEZONE = 'Asia/Kolkata'; // GMT+5:30
 
 let allBookings = [];
@@ -1276,3 +1276,4 @@ function getRoomDisplayName(booking) {
     return 'Unknown Room';
 
 }
+
