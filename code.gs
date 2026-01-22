@@ -531,7 +531,7 @@ function handleDelete(sheet, booking) {
 }
 
 /**
- * Send meeting invitation email with HTML template
+ * Send meeting invitation email with MIME calendar format
  */
 function sendMeetingInvitation(booking, bookingId, isUpdate) {
   if (!booking.participants) return;
@@ -548,12 +548,7 @@ function sendMeetingInvitation(booking, bookingId, isUpdate) {
   const formattedStartTime = Utilities.formatDate(startDate, IST_TIMEZONE, 'hh:mm a');
   const formattedEndTime = Utilities.formatDate(endDate, IST_TIMEZONE, 'hh:mm a');
   
-  // Format dates for Google Calendar URL
-  const gcalDate = Utilities.formatDate(startDate, IST_TIMEZONE, 'yyyyMMdd');
-  const gcalStartTime = Utilities.formatDate(startDate, IST_TIMEZONE, 'HHmmss');
-  const gcalEndTime = Utilities.formatDate(endDate, IST_TIMEZONE, 'HHmmss');
-  
-  const subject = (isUpdate ? '[UPDATED] ' : '') + 'Meeting Invitation: ' + booking.title;
+  const subject = (isUpdate ? 'Updated: ' : '') + booking.title;
   
   // Build HTML email
   const emailHtml = getMeetingHtmlTemplate(isUpdate)
@@ -564,20 +559,57 @@ function sendMeetingInvitation(booking, bookingId, isUpdate) {
     .replace(/{{END_TIME}}/g, formattedEndTime)
     .replace(/{{ORGANIZER}}/g, booking.bookedBy)
     .replace(/{{NOTES}}/g, booking.note || 'No additional notes')
-    .replace(/{{BOOKING_ID}}/g, bookingId)
-    .replace(/{{GCAL_DATE}}/g, gcalDate)
-    .replace(/{{GCAL_START_TIME}}/g, gcalStartTime)
-    .replace(/{{GCAL_END_TIME}}/g, gcalEndTime);
+    .replace(/{{BOOKING_ID}}/g, bookingId);
   
-  // Send to each participant
+  // Create iCalendar content
+  const sequence = isUpdate ? '1' : '0';
+  const icalContent = createICalendarEvent(booking, bookingId, sequence, 'REQUEST');
+  
+  // Get organizer email (use Session user or default)
+  const organizerEmail = Session.getActiveUser().getEmail() || 'noreply@basilurtea.com';
+  
+  // Send to each participant using Gmail raw MIME (no .ics attachment)
   emails.forEach(function(email) {
     try {
-      GmailApp.sendEmail(email, subject, 'Please enable HTML to view this invitation.', {
-        htmlBody: emailHtml
-      });
-      
+      const boundary = '----=_Part_' + Utilities.getUuid();
+
+      const organizerDisplayName = booking && booking.bookedBy ? booking.bookedBy : 'Meeting Organizer';
+      const organizerEmailHeader = organizerEmail ? ('"' + organizerDisplayName + '" <' + organizerEmail + '>') : organizerEmail;
+
+      const rawLines = [];
+      rawLines.push('From: ' + organizerEmailHeader);
+      rawLines.push('To: ' + email);
+      rawLines.push('Subject: ' + subject);
+      rawLines.push('MIME-Version: 1.0');
+      rawLines.push('Content-Class: urn:content-classes:calendarmessage');
+      rawLines.push('Content-Type: multipart/alternative; boundary="' + boundary + '"');
+      rawLines.push('');
+
+      // HTML part
+      rawLines.push('--' + boundary);
+      rawLines.push('Content-Type: text/html; charset=UTF-8');
+      rawLines.push('Content-Transfer-Encoding: 7bit');
+      rawLines.push('');
+      rawLines.push(emailHtml);
+      rawLines.push('');
+
+      // Calendar part
+      rawLines.push('--' + boundary);
+      rawLines.push('Content-Type: text/calendar; method=REQUEST; charset=UTF-8');
+      rawLines.push('Content-Transfer-Encoding: 7bit');
+      rawLines.push('');
+      rawLines.push(icalContent);
+      rawLines.push('');
+
+      rawLines.push('--' + boundary + '--');
+
+      const rawMessage = rawLines.join('\r\n');
+      const encodedMessage = Utilities.base64EncodeWebSafe(rawMessage);
+
+      sendRawEmail(encodedMessage);
+
       logEmailSuccess(bookingId, booking.title, email, subject, isUpdate ? 'Updated' : 'Scheduled');
-      Logger.log('Email sent to: ' + email);
+      Logger.log('Calendar invitation sent to: ' + email);
     } catch (error) {
       Logger.log('Failed to send email to ' + email + ': ' + error.toString());
       logEmailError(bookingId, booking.title, email, subject, error.toString());
@@ -586,7 +618,7 @@ function sendMeetingInvitation(booking, bookingId, isUpdate) {
 }
 
 /**
- * Send cancellation email
+ * Send cancellation email with calendar cancellation
  */
 function sendCancellationEmail(bookingData, bookingId, deletedBy) {
   if (!bookingData.participants) return;
@@ -599,7 +631,7 @@ function sendCancellationEmail(bookingData, bookingId, deletedBy) {
   const formattedDate = Utilities.formatDate(startDate, IST_TIMEZONE, 'EEEE, MMMM dd, yyyy');
   const formattedStartTime = Utilities.formatDate(startDate, IST_TIMEZONE, 'hh:mm a');
   
-  const subject = '[CANCELED] Meeting Canceled: ' + bookingData.title;
+  const subject = 'Canceled: ' + bookingData.title;
   
   const emailHtml = getCancellationHtmlTemplate()
     .replace(/{{MEETING_TITLE}}/g, bookingData.title)
@@ -609,19 +641,145 @@ function sendCancellationEmail(bookingData, bookingId, deletedBy) {
     .replace(/{{CANCELED_BY}}/g, deletedBy)
     .replace(/{{BOOKING_ID}}/g, bookingId);
   
+  // Create iCalendar cancellation (sequence = 2 to override previous)
+  const icalContent = createICalendarEvent(bookingData, bookingId, '2', 'CANCEL');
+  
+  // Organizer email for cancellations
+  const organizerEmail = Session.getActiveUser().getEmail() || 'noreply@basilurtea.com';
+
   emails.forEach(function(email) {
     try {
-      GmailApp.sendEmail(email, subject, 'Please enable HTML to view this cancellation notice.', {
-        htmlBody: emailHtml
-      });
-      
+      const boundary = '----=_Part_' + Utilities.getUuid();
+
+      const organizerDisplayName = bookingData && bookingData.bookedBy ? bookingData.bookedBy : 'Organizer';
+      const organizerEmailHeader = organizerEmail ? ('"' + organizerDisplayName + '" <' + organizerEmail + '>') : organizerEmail;
+
+      const rawLines = [];
+      rawLines.push('From: ' + organizerEmailHeader);
+      rawLines.push('To: ' + email);
+      rawLines.push('Subject: ' + subject);
+      rawLines.push('MIME-Version: 1.0');
+      rawLines.push('Content-Class: urn:content-classes:calendarmessage');
+      rawLines.push('Content-Type: multipart/alternative; boundary="' + boundary + '"');
+      rawLines.push('');
+
+      // HTML part
+      rawLines.push('--' + boundary);
+      rawLines.push('Content-Type: text/html; charset=UTF-8');
+      rawLines.push('Content-Transfer-Encoding: 7bit');
+      rawLines.push('');
+      rawLines.push(emailHtml);
+      rawLines.push('');
+
+      // Calendar CANCEL part
+      rawLines.push('--' + boundary);
+      rawLines.push('Content-Type: text/calendar; method=CANCEL; charset=UTF-8');
+      rawLines.push('Content-Transfer-Encoding: 7bit');
+      rawLines.push('');
+      rawLines.push(icalContent);
+      rawLines.push('');
+
+      rawLines.push('--' + boundary + '--');
+
+      const rawMessage = rawLines.join('\r\n');
+      const encodedMessage = Utilities.base64EncodeWebSafe(rawMessage);
+
+      sendRawEmail(encodedMessage);
+
       logEmailSuccess(bookingId, bookingData.title, email, subject, 'Canceled');
-      Logger.log('Cancellation email sent to: ' + email);
+      Logger.log('Cancellation sent to: ' + email);
     } catch (error) {
       Logger.log('Failed to send cancellation email to ' + email + ': ' + error.toString());
       logEmailError(bookingId, bookingData.title, email, subject, error.toString());
     }
   });
+}
+
+/**
+ * Create iCalendar VEVENT content
+ */
+function createICalendarEvent(booking, bookingId, sequence, method) {
+  const startDate = new Date(booking.start);
+  const endDate = new Date(booking.end);
+  
+  // Format dates in UTC (yyyyMMddTHHmmssZ)
+  const formatICalDate = function(date) {
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+    return year + month + day + 'T' + hours + minutes + seconds + 'Z';
+  };
+  
+  const dtStart = formatICalDate(startDate);
+  const dtEnd = formatICalDate(endDate);
+  const dtStamp = formatICalDate(new Date());
+  
+  // Get organizer email and display name
+  const organizerEmail = Session.getActiveUser().getEmail() || 'systems7.basilurtea@gmail.com';
+  const organizerDisplayName = booking.bookedBy || 'Meeting Organizer';
+  
+  // Parse attendees
+  const attendees = booking.participants ? 
+    booking.participants.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; }) : [];
+  
+  // Build ATTENDEE lines
+  let attendeeLines = '';
+  attendees.forEach(function(email) {
+    attendeeLines += 'ATTENDEE;CN=' + email + ';RSVP=TRUE:mailto:' + email + '\r\n';
+  });
+  
+  // Escape special characters in text fields
+  const escapeICalText = function(text) {
+    if (!text) return '';
+    return String(text)
+      .replace(/\\/g, '\\\\')
+      .replace(/;/g, '\\;')
+      .replace(/,/g, '\\,')
+      .replace(/\n/g, '\\n');
+  };
+  
+  const summary = escapeICalText(booking.title || 'Meeting');
+  const location = escapeICalText(booking.room || '');
+  const description = escapeICalText(booking.note || '');
+  const uid = bookingId + '@basilur.booking';
+  
+  // Status based on method
+  const status = method === 'CANCEL' ? 'CANCELLED' : 'CONFIRMED';
+  
+  // Build iCalendar content
+  const ical = 
+    'BEGIN:VCALENDAR\r\n' +
+    'VERSION:2.0\r\n' +
+    'PRODID:-//Basilur Tea//Meeting Room Booking//EN\r\n' +
+    'METHOD:' + method + '\r\n' +
+    'CALSCALE:GREGORIAN\r\n' +
+    'BEGIN:VEVENT\r\n' +
+    'UID:' + uid + '\r\n' +
+    'DTSTAMP:' + dtStamp + '\r\n' +
+    'DTSTART:' + dtStart + '\r\n' +
+    'DTEND:' + dtEnd + '\r\n' +
+    'SUMMARY:' + summary + '\r\n' +
+    'LOCATION:' + location + '\r\n' +
+    'DESCRIPTION:' + description + '\r\n' +
+    'ORGANIZER;CN=' + organizerDisplayName + ':mailto:' + organizerEmail + '\r\n' +
+    attendeeLines +
+    'STATUS:' + status + '\r\n' +
+    'SEQUENCE:' + sequence + '\r\n' +
+    'PRIORITY:5\r\n' +
+    'CLASS:PUBLIC\r\n' +
+    'TRANSP:OPAQUE\r\n' +
+    'BEGIN:VALARM\r\n' +
+    'TRIGGER:-PT15M\r\n' +
+    'ACTION:DISPLAY\r\n' +
+    'DESCRIPTION:Reminder\r\n' +
+    'END:VALARM\r\n' +
+    'END:VEVENT\r\n' +
+    'END:VCALENDAR';
+  
+  return ical;
 }
 
 /**
@@ -671,25 +829,12 @@ function getMeetingHtmlTemplate(isUpdate) {
                 <p style="margin:10px 0 0;font-size:14px;color:#b0b0b0;">Booking ID: {{BOOKING_ID}}</p>
               </div>
 
-              <p style="font-size:15px;color:#b0b0b0;margin-bottom:20px;text-align:center;">
-                Add this meeting to your calendar:
+              <p style="font-size:15px;color:#00bcd4;font-weight:600;margin-top:20px;text-align:center;">
+                📅 This invitation has been added to your calendar
               </p>
-
-              <!-- Add to Calendar Button -->
-              <table align="center" cellpadding="0" cellspacing="0" border="0" style="margin:auto;">
-                <tr>
-                  <td align="center">
-                    <a href="https://calendar.google.com/calendar/render?action=TEMPLATE&text={{MEETING_TITLE}}&dates={{GCAL_DATE}}T{{GCAL_START_TIME}}Z/{{GCAL_DATE}}T{{GCAL_END_TIME}}Z&details={{NOTES}}&location={{MEETING_ROOM}}&sf=true&output=xml"
-                       target="_blank"
-                       style="display:inline-block;padding:12px 20px;font-weight:600;font-size:14px;color:#ffffff;text-decoration:none;background:linear-gradient(135deg,#00bcd4,#2c5364);border-radius:8px;box-shadow:0 4px 15px rgba(0,188,212,0.3);">
-                        Add to Calendar
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="font-size:13px;color:#888;margin-top:25px;text-align:center;">
-                Please mark your calendar accordingly.
+              
+              <p style="font-size:13px;color:#888;margin-top:15px;text-align:center;">
+                Check your calendar app (Gmail, Outlook, etc.) to accept or decline.
               </p>
             </td>
           </tr>
@@ -903,6 +1048,49 @@ function formatDateAsIST(dateInput, format) {
  */
 function getCurrentTimeIST() {
   return formatDateAsIST(new Date(), 'yyyy-MM-dd\'T\'HH:mm:ss');
+}
+
+/**
+ * Send raw RFC822 base64url encoded message.
+ * Tries the Apps Script Advanced Gmail service first, then falls back to the Gmail REST API.
+ * If neither is available it throws a helpful error instructing how to enable the Gmail API.
+ */
+function sendRawEmail(encodedMessage) {
+  try {
+    if (typeof Gmail !== 'undefined' && Gmail.Users && Gmail.Users.Messages && Gmail.Users.Messages.send) {
+      Gmail.Users.Messages.send({ raw: encodedMessage }, 'me');
+      return;
+    }
+  } catch (e) {
+    // continue to fallback
+    Logger.log('Gmail advanced service call failed: ' + e.toString());
+  }
+
+  // Fallback: use Gmail REST API via UrlFetchApp
+  try {
+    const url = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
+    const token = ScriptApp.getOAuthToken();
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify({ raw: encodedMessage }),
+      muteHttpExceptions: true
+    };
+
+    const resp = UrlFetchApp.fetch(url, options);
+    const code = resp.getResponseCode();
+    if (code >= 200 && code < 300) {
+      return;
+    }
+
+    Logger.log('Gmail REST send failed: ' + code + ' - ' + resp.getContentText());
+  } catch (e) {
+    Logger.log('Gmail REST fallback failed: ' + e.toString());
+  }
+
+  // If we reach here, neither method worked
+  throw new Error('Unable to send raw MIME email. Enable the Gmail Advanced Service (Resources → Advanced Google services) and the Gmail API in the Google Cloud Console for this project, then reauthorize the script.');
 }
 
 /**
