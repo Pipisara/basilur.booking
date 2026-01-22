@@ -1,7 +1,7 @@
 // Configuration
 // TIMEZONE: Asia/Kolkata (IST, GMT+5:30) - All timestamps and display use this timezone
-const GET_URL = 'https://script.google.com/macros/s/AKfycbyCeT7yF3ZWv9LRCNywiwDpm_KqRPdQQs07WhBR8zON7BFsk-x4-RPFcCa28M3mJ_Ci/exec';
-const POST_URL = 'https://script.google.com/macros/s/AKfycbyCeT7yF3ZWv9LRCNywiwDpm_KqRPdQQs07WhBR8zON7BFsk-x4-RPFcCa28M3mJ_Ci/exec';
+const GET_URL = 'https://script.google.com/macros/s/AKfycbwzcoA-sg71P3oik8vhYyCjzIuDxefX4H7zEKa1aMwFyEy-sIXfoJ9dnPY-CoCsdyK2/exec';
+const POST_URL = 'https://script.google.com/macros/s/AKfycbwzcoA-sg71P3oik8vhYyCjzIuDxefX4H7zEKa1aMwFyEy-sIXfoJ9dnPY-CoCsdyK2/exec';
 const IST_TIMEZONE = 'Asia/Kolkata'; // GMT+5:30
 
 let allBookings = [];
@@ -21,24 +21,24 @@ function getISTTime(date) {
         hour12: false,
         timeZone: IST_TIMEZONE
     });
-    
+
     const parts = istFormatter.formatToParts(date);
     const istDate = new Date();
-    
+
     const yearPart = parts.find(p => p.type === 'year')?.value;
     const monthPart = parts.find(p => p.type === 'month')?.value;
     const dayPart = parts.find(p => p.type === 'day')?.value;
     const hourPart = parts.find(p => p.type === 'hour')?.value;
     const minutePart = parts.find(p => p.type === 'minute')?.value;
     const secondPart = parts.find(p => p.type === 'second')?.value;
-    
+
     istDate.setFullYear(yearPart);
     istDate.setMonth(monthPart - 1);
     istDate.setDate(dayPart);
     istDate.setHours(hourPart);
     istDate.setMinutes(minutePart);
     istDate.setSeconds(secondPart);
-    
+
     return istDate;
 }
 
@@ -104,10 +104,12 @@ function showPopup(message, type) {
 }
 
 function showConfirm(message, okLabel) {
-    return openDialog({ message, type: 'warning', buttons: [
-        { label: 'Cancel', value: false, variant: 'secondary' },
-        { label: okLabel || 'OK', value: true, variant: 'danger' }
-    ]});
+    return openDialog({
+        message, type: 'warning', buttons: [
+            { label: 'Cancel', value: false, variant: 'secondary' },
+            { label: okLabel || 'OK', value: true, variant: 'danger' }
+        ]
+    });
 }
 
 // Authentication Functions
@@ -182,7 +184,7 @@ function updateUIForLogin() {
     const loginBtn = document.getElementById('loginBtn');
     const userInfo = document.getElementById('userInfo');
     const userName = document.getElementById('userName');
-    
+
     if (currentUser) {
         loginBtn.classList.add('hidden');
         userInfo.classList.remove('hidden');
@@ -208,24 +210,24 @@ function startClock() {
 function updateClock() {
     const now = new Date();
     const clocks = document.querySelectorAll('[data-clock]');
-    
+
     clocks.forEach(clock => {
         const type = clock.dataset.clock;
         const weekdayFormatter = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: IST_TIMEZONE });
         const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: IST_TIMEZONE });
         const timeFormatter = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: IST_TIMEZONE });
-        
+
         const weekday = weekdayFormatter.format(now);
         const date = dateFormatter.format(now);
         const time = timeFormatter.format(now);
-        
+
         if (type === 'global') {
             clock.textContent = `${weekday}, ${date} • ${time}`;
         } else {
             clock.textContent = `${time} • ${date}`;
         }
     });
-    
+
     updateCurrentTimeLine();
 }
 
@@ -234,7 +236,7 @@ async function loadBookings() {
     try {
         const response = await fetch(GET_URL);
         if (!response.ok) throw new Error('Failed to fetch');
-        
+
         const data = await response.json();
         allBookings = Array.isArray(data) ? data.map(normalizeBooking) : [];
         displaySummaryViews();
@@ -285,14 +287,14 @@ function initializeViewToggles() {
         button.addEventListener('click', () => {
             const view = button.dataset.view;
             const room = button.dataset.room;
-            
+
             const container = button.closest('.room-panel');
             container.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.remove('active'));
             button.classList.add('active');
-            
+
             const summaryView = container.querySelector('.summary-view');
             const calendarView = container.querySelector('.calendar-view');
-            
+
             if (view === 'calendar') {
                 summaryView.classList.remove('active');
                 calendarView.classList.add('active');
@@ -314,11 +316,11 @@ function initializeWeekNavigation() {
         button.addEventListener('click', () => {
             const action = button.dataset.action;
             const room = button.dataset.room;
-            
+
             if (!currentWeekStart[room]) {
                 currentWeekStart[room] = getWeekStart(new Date());
             }
-            
+
             if (action === 'prev-week') {
                 currentWeekStart[room] = addDays(currentWeekStart[room], -1);
             } else if (action === 'next-week') {
@@ -326,7 +328,7 @@ function initializeWeekNavigation() {
             } else if (action === 'today') {
                 currentWeekStart[room] = getWeekStart(new Date());
             }
-            
+
             renderCalendar(room);
         });
     });
@@ -351,33 +353,33 @@ function initializeCalendarClicks() {
                     hour12: false,
                     timeZone: IST_TIMEZONE
                 });
-                
+
                 const timeParts = istFormatter.formatToParts(now);
                 const currentISTYear = parseInt(timeParts.find(p => p.type === 'year')?.value);
                 const currentISTMonth = parseInt(timeParts.find(p => p.type === 'month')?.value);
                 const currentISTDay = parseInt(timeParts.find(p => p.type === 'day')?.value);
                 const currentISTHour = parseInt(timeParts.find(p => p.type === 'hour')?.value);
                 const currentISTMinute = parseInt(timeParts.find(p => p.type === 'minute')?.value);
-                
+
                 // Parse selected slot date
                 const parts = String(date).split('-').map(Number);
                 const slotYear = parts[0];
                 const slotMonth = parts[1] || 1;
                 const slotDay = parts[2] || 1;
                 const slotHour = Number(hour);
-                
+
                 // Check if selected slot is in the past (with 5-minute margin)
                 const isSlotToday = (slotYear === currentISTYear && slotMonth === currentISTMonth && slotDay === currentISTDay);
                 const isSlotHourInPast = isSlotToday && slotHour < currentISTHour;
-                const isPastDate = (slotYear < currentISTYear) || 
-                                  (slotYear === currentISTYear && slotMonth < currentISTMonth) ||
-                                  (slotYear === currentISTYear && slotMonth === currentISTMonth && slotDay < currentISTDay);
-                
+                const isPastDate = (slotYear < currentISTYear) ||
+                    (slotYear === currentISTYear && slotMonth < currentISTMonth) ||
+                    (slotYear === currentISTYear && slotMonth === currentISTMonth && slotDay < currentISTDay);
+
                 if (isPastDate || isSlotHourInPast) {
                     showPopup('Selected time is in the past', 'warning');
                     return;
                 }
-                
+
                 // Allow booking with current IST time if slot is in current hour
                 openModalWithTime(room, date, hour, isSlotToday && slotHour === currentISTHour ? currentISTMinute : null);
             }
@@ -410,23 +412,23 @@ function renderCalendar(room) {
     if (!currentWeekStart[room]) {
         currentWeekStart[room] = getWeekStart(new Date());
     }
-    
+
     const weekStart = currentWeekStart[room];
     const container = document.querySelector(`.calendar-grid[data-room="${room}"]`);
     const weekRangeEl = document.querySelector(`.week-range[data-room="${room}"]`);
-    
+
     if (weekRangeEl) {
         weekRangeEl.textContent = formatWeekRange(weekStart);
     }
-    
+
     if (!container) return;
-    
+
     let html = '<div class="calendar-header">';
     html += '<div class="calendar-header-cell">Time</div>';
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const formatLocalDate = (d) => {
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -442,32 +444,32 @@ function renderCalendar(room) {
         html += `<div class="calendar-header-cell${isToday ? ' today' : ''}" data-date="${dateStr}">${dayName}<br>${dayNum}</div>`;
     }
     html += '</div>';
-    
+
     html += '<div class="calendar-body">';
     html += '<div class="calendar-days">';
-    
+
     let timeLabelsColumn = '';
     for (let hour = 8; hour <= 19; hour++) {
         timeLabelsColumn += `<div class="time-label" data-hour="${hour}">${formatHour(hour)}</div>`;
     }
     html += `<div class="time-labels-column">${timeLabelsColumn}</div>`;
-    
+
     for (let day = -1; day < 6; day++) {
         const date = addDays(weekStart, day);
         const dateStr = formatLocalDate(date);
         const isToday = date.getTime() === today.getTime();
-        
+
         let dayColumnHtml = `<div class="day-column${isToday ? ' today' : ''}" data-room="${room}" data-date="${dateStr}">`;
         for (let hour = 8; hour <= 19; hour++) {
             dayColumnHtml += `<div class="hour-cell" data-room="${room}" data-date="${dateStr}" data-hour="${hour}"></div>`;
         }
-        
+
         const roomLabel = `Room ${room}`;
         const visibleStart = new Date(date);
         visibleStart.setHours(8, 0, 0, 0);
         const visibleEnd = new Date(date);
         visibleEnd.setHours(20, 0, 0, 0);
-        
+
         const dayBookings = allBookings.filter(b => {
             if (b.room !== roomLabel) return false;
             const start = new Date(b.start);
@@ -478,7 +480,7 @@ function renderCalendar(room) {
             dayEnd.setHours(23, 59, 59, 999);
             return start < dayEnd && end > dayStart;
         });
-        
+
         dayBookings.forEach(booking => {
             const bookingStart = new Date(booking.start);
             const bookingEnd = new Date(booking.end);
@@ -500,11 +502,11 @@ function renderCalendar(room) {
                 </div>
             `;
         });
-        
+
         dayColumnHtml += '</div>';
         html += dayColumnHtml;
     }
-    
+
     html += '</div>';
     html += '</div>';
     container.innerHTML = html;
@@ -572,7 +574,7 @@ function refreshAllCalendars() {
 
 function updateCurrentTimeLine() {
     const now = new Date();
-    
+
     // Get current IST time
     const istFormatter = new Intl.DateTimeFormat('en-US', {
         hour: '2-digit',
@@ -580,25 +582,25 @@ function updateCurrentTimeLine() {
         hour12: false,
         timeZone: IST_TIMEZONE
     });
-    
+
     const timeParts = istFormatter.formatToParts(now);
     const currentHour = parseInt(timeParts.find(p => p.type === 'hour').value);
     const currentMinutes = parseInt(timeParts.find(p => p.type === 'minute').value);
-    
+
     // Only show line if within calendar hours (8-19)
     if (currentHour < 8 || currentHour >= 20) {
         document.querySelectorAll('.current-time-line').forEach(line => line.remove());
         return;
     }
-    
+
     // Calculate position: each hour is 60px, each minute is 1px
     const offsetFromTop = (currentHour - 8) * 60 + currentMinutes;
-    
+
     document.querySelectorAll('.day-column').forEach(column => {
         // Remove existing line
         const existingLine = column.querySelector('.current-time-line');
         if (existingLine) existingLine.remove();
-        
+
         // Add new line
         const line = document.createElement('div');
         line.className = 'current-time-line';
@@ -611,7 +613,7 @@ function updateCurrentTimeLine() {
 function displaySummaryViews() {
     const now = new Date();
     const upcomingBookings = allBookings.filter(b => new Date(b.end) > now);
-    
+
     displayRoomSummary('A', upcomingBookings.filter(b => b.room === 'Room A'));
     displayRoomSummary('B', upcomingBookings.filter(b => b.room === 'Room B'));
     displayRoomSummary('C', upcomingBookings.filter(b => b.room === 'Room C'));
@@ -621,12 +623,12 @@ function displaySummaryViews() {
 function displayRoomSummary(room, bookings) {
     const container = document.getElementById(`room${room}-bookings`);
     if (!container) return;
-    
+
     if (bookings.length === 0) {
         container.innerHTML = '<p class="no-bookings">No upcoming bookings</p>';
         return;
     }
-    
+
     bookings.sort((a, b) => new Date(a.start) - new Date(b.start));
     container.innerHTML = bookings.map(b => createBookingCard(b, false)).join('');
 }
@@ -634,12 +636,12 @@ function displayRoomSummary(room, bookings) {
 function displayAllBookings(bookings) {
     const container = document.getElementById('all-bookings');
     if (!container) return;
-    
+
     if (bookings.length === 0) {
         container.innerHTML = '<p class="no-bookings">No upcoming bookings</p>';
         return;
     }
-    
+
     bookings.sort((a, b) => new Date(a.start) - new Date(b.start));
     container.innerHTML = bookings.map(b => createBookingCard(b, true)).join('');
 }
@@ -648,13 +650,13 @@ function createBookingCard(booking, showRoom) {
     const now = new Date();
     const start = new Date(booking.start);
     const end = new Date(booking.end);
-    
+
     let status = 'upcoming';
     if (now >= start && now < end) status = 'running';
     else if (now >= end) status = 'past';
-    
+
     const statusLabel = status === 'running' ? 'Running' : status === 'upcoming' ? 'Upcoming' : 'Finished';
-    
+
     const roomLabel = getRoomDisplayName(booking);
     return `
         <div class="booking-card booking-status-${status}" onclick="viewBookingDetails('${booking.id}')" style="cursor: pointer;">
@@ -698,18 +700,18 @@ function escapeHtml(text) {
 function viewBookingDetails(bookingId) {
     const booking = allBookings.find(b => String(b.id) === String(bookingId));
     if (!booking) return;
-    
+
     currentEventId = bookingId;
     const canEdit = canEditBooking(booking);
-    
+
     const now = new Date();
     const start = new Date(booking.start);
     const end = new Date(booking.end);
-    
+
     let status = 'Upcoming';
     if (now >= start && now < end) status = 'Running';
     else if (now >= end) status = 'Finished';
-    
+
     let detailsHtml = `
         <div class="event-details-content">
             <div class="event-detail-row">
@@ -756,7 +758,7 @@ function viewBookingDetails(bookingId) {
             ` : ''}
         </div>
     `;
-    
+
     if (canEdit) {
         detailsHtml += `
             <div class="event-actions">
@@ -765,7 +767,7 @@ function viewBookingDetails(bookingId) {
             </div>
         `;
     }
-    
+
     document.getElementById('eventDetails').innerHTML = detailsHtml;
     document.getElementById('eventModal').style.display = 'block';
 }
@@ -782,23 +784,23 @@ function editBooking(bookingId) {
         showPopup('You do not have permission to edit this booking', 'error');
         return;
     }
-    
+
     closeEventModal();
-    
+
     const roomLetter = booking.room.replace('Room ', '');
     const modal = document.getElementById('bookingModal');
     const form = document.getElementById('bookingForm');
-    
+
     form.dataset.editMode = 'true';
     form.dataset.bookingId = bookingId;
-    
+
     document.getElementById('room').value = booking.room;
     document.getElementById('title').value = booking.title;
     document.getElementById('startTime').value = toDateTimeLocal(new Date(booking.start));
     document.getElementById('endTime').value = toDateTimeLocal(new Date(booking.end));
     document.getElementById('note').value = booking.note || '';
     document.getElementById('participants').value = booking.participants || '';
-    
+
     modal.querySelector('h2').textContent = 'Edit Booking';
     modal.style.display = 'block';
     autosizeNote();
@@ -811,12 +813,12 @@ async function deleteBooking(bookingId) {
         showPopup('You do not have permission to delete this booking', 'error');
         return;
     }
-    
+
     const confirmed = await showConfirm('Are you sure you want to delete this booking? Cancellation emails will be sent to all participants.', 'Delete');
     if (!confirmed) {
         return;
     }
-    
+
     try {
         await fetch(POST_URL, {
             method: 'POST',
@@ -829,7 +831,7 @@ async function deleteBooking(bookingId) {
                 deletedBy: currentUser ? currentUser.name : 'Unknown'
             })
         });
-        
+
         await showPopup('Booking deleted successfully. Cancellation emails are being sent.', 'success');
         closeEventModal();
         setTimeout(loadBookings, 1500);
@@ -846,20 +848,20 @@ function openModal(room) {
         openLoginModal();
         return;
     }
-    
+
     const modal = document.getElementById('bookingModal');
     const form = document.getElementById('bookingForm');
     form.reset();
     delete form.dataset.editMode;
     delete form.dataset.bookingId;
-    
+
     document.getElementById('room').value = `Room ${room}`;
     document.getElementById('sendEmailNotification').checked = true;
     modal.querySelector('h2').textContent = 'Add New Booking';
     modal.style.display = 'block';
     autosizeNote();
     autosizeParticipants();
-    
+
     // Get current IST time with 5-minute margin
     const now = new Date();
     const istFormatter = new Intl.DateTimeFormat('en-US', {
@@ -871,17 +873,17 @@ function openModal(room) {
         hour12: false,
         timeZone: IST_TIMEZONE
     });
-    
+
     const timeParts = istFormatter.formatToParts(now);
     const currentISTYear = parseInt(timeParts.find(p => p.type === 'year')?.value);
     const currentISTMonth = parseInt(timeParts.find(p => p.type === 'month')?.value);
     const currentISTDay = parseInt(timeParts.find(p => p.type === 'day')?.value);
     const currentISTHour = parseInt(timeParts.find(p => p.type === 'hour')?.value);
     const currentISTMinute = parseInt(timeParts.find(p => p.type === 'minute')?.value);
-    
+
     let currentIST = new Date(currentISTYear, currentISTMonth - 1, currentISTDay, currentISTHour, currentISTMinute, 0, 0);
     currentIST.setMinutes(currentIST.getMinutes() - 5);
-    
+
     const nowLocal = toDateTimeLocalIST(currentIST);
     const startInput = document.getElementById('startTime');
     const endInput = document.getElementById('endTime');
@@ -896,33 +898,33 @@ function openModalWithTime(room, dateStr, hour, startMinute = null) {
         openLoginModal();
         return;
     }
-    
+
     const modal = document.getElementById('bookingModal');
     const form = document.getElementById('bookingForm');
     form.reset();
     delete form.dataset.editMode;
     delete form.dataset.bookingId;
-    
+
     document.getElementById('room').value = `Room ${room}`;
-    
+
     const parts = String(dateStr).split('-').map(Number);
     // If startMinute is provided, use current IST minutes for start time
     const startMinutes = startMinute !== null ? startMinute : 0;
     const startDate = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1, Number(hour), startMinutes, 0, 0);
-    
+
     // End time is always 1 hour after start time
     const endDate = new Date(startDate);
     endDate.setHours(endDate.getHours() + 1);
-    
+
     document.getElementById('startTime').value = toDateTimeLocal(startDate);
     document.getElementById('endTime').value = toDateTimeLocal(endDate);
     document.getElementById('sendEmailNotification').checked = true;
-    
+
     modal.querySelector('h2').textContent = 'Add New Booking';
     modal.style.display = 'block';
     autosizeNote();
     autosizeParticipants();
-    
+
     // Get current IST time with 5-minute margin
     const now = new Date();
     const istFormatter = new Intl.DateTimeFormat('en-US', {
@@ -934,17 +936,17 @@ function openModalWithTime(room, dateStr, hour, startMinute = null) {
         hour12: false,
         timeZone: IST_TIMEZONE
     });
-    
+
     const timeParts = istFormatter.formatToParts(now);
     const currentISTYear = parseInt(timeParts.find(p => p.type === 'year')?.value);
     const currentISTMonth = parseInt(timeParts.find(p => p.type === 'month')?.value);
     const currentISTDay = parseInt(timeParts.find(p => p.type === 'day')?.value);
     const currentISTHour = parseInt(timeParts.find(p => p.type === 'hour')?.value);
     const currentISTMinute = parseInt(timeParts.find(p => p.type === 'minute')?.value);
-    
+
     let currentIST = new Date(currentISTYear, currentISTMonth - 1, currentISTDay, currentISTHour, currentISTMinute, 0, 0);
     currentIST.setMinutes(currentIST.getMinutes() - 5);
-    
+
     const nowLocal = toDateTimeLocalIST(currentIST);
     const startInput = document.getElementById('startTime');
     const endInput = document.getElementById('endTime');
@@ -964,14 +966,14 @@ function toDateTimeLocal(date) {
         hour12: false,
         timeZone: IST_TIMEZONE
     });
-    
+
     const parts = istFormatter.formatToParts(date);
     const year = parts.find(p => p.type === 'year')?.value;
     const month = parts.find(p => p.type === 'month')?.value;
     const day = parts.find(p => p.type === 'day')?.value;
     const hours = parts.find(p => p.type === 'hour')?.value;
     const minutes = parts.find(p => p.type === 'minute')?.value;
-    
+
     return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
@@ -986,14 +988,14 @@ function toDateTimeLocalIST(date) {
         hour12: false,
         timeZone: IST_TIMEZONE
     });
-    
+
     const parts = istFormatter.formatToParts(date);
     const year = parts.find(p => p.type === 'year')?.value;
     const month = parts.find(p => p.type === 'month')?.value;
     const day = parts.find(p => p.type === 'day')?.value;
     const hours = parts.find(p => p.type === 'hour')?.value;
     const minutes = parts.find(p => p.type === 'minute')?.value;
-    
+
     return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
@@ -1005,11 +1007,11 @@ function closeModal() {
     delete form.dataset.bookingId;
 }
 
-window.onclick = async function(event) {
+window.onclick = async function (event) {
     const bookingModal = document.getElementById('bookingModal');
     const eventModal = document.getElementById('eventModal');
     const loginModal = document.getElementById('loginModal');
-    
+
     if (event.target === bookingModal) {
         const confirmed = await showConfirm('Do you want to discard settings?', 'Discard');
         if (confirmed) {
@@ -1025,16 +1027,16 @@ window.onclick = async function(event) {
 // Form Submission
 document.getElementById('bookingForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+
     if (!currentUser) {
         showPopup('Please login to create or edit a booking', 'info');
         return;
     }
-    
+
     const form = e.target;
     const isEditMode = form.dataset.editMode === 'true';
     const bookingId = form.dataset.bookingId;
-    
+
     const formData = new FormData(form);
     const room = formData.get('room');
     const title = formData.get('title');
@@ -1043,7 +1045,7 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
     const note = formData.get('note');
     const participants = formData.get('participants');
     const sendEmail = document.getElementById('sendEmailNotification').checked;
-    
+
     const start = new Date(startTime);
     const end = new Date(endTime);
     const now = new Date();
@@ -1051,12 +1053,12 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
         showPopup('Start time cannot be in the past', 'warning');
         return;
     }
-    
+
     if (end <= start) {
         showPopup('End time must be after start time', 'warning');
         return;
     }
-    
+
     // Check for conflicts (exclude current booking if editing)
     const hasConflict = allBookings.some(booking => {
         if (isEditMode && String(booking.id) === String(bookingId)) return false;
@@ -1065,15 +1067,15 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
         const bookingEnd = new Date(booking.end);
         return (start < bookingEnd && end > bookingStart);
     });
-    
+
     if (hasConflict) {
         showPopup('This time slot conflicts with an existing booking', 'warning');
         return;
     }
-    
+
     // Extract room key from room name (e.g., "Room A" -> "A")
     const roomKey = room.replace('Room ', '').trim();
-    
+
     const booking = {
         action: isEditMode ? 'update' : 'create',
         room,
@@ -1087,19 +1089,19 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
         participants: participants || '',
         sendEmail: sendEmail
     };
-    
+
     if (isEditMode) {
         booking.id = bookingId;
         booking.updatedBy = currentUser.name;
     }
-    
+
     const submitBtn = form.querySelector('button[type="submit"]');
     if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.dataset.prevText = submitBtn.textContent;
         submitBtn.textContent = isEditMode ? 'Updating...' : 'Submitting...';
     }
-    
+
     try {
         await fetch(POST_URL, {
             method: 'POST',
@@ -1107,11 +1109,11 @@ document.getElementById('bookingForm').addEventListener('submit', async (e) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(booking)
         });
-        
-        const successMsg = isEditMode 
+
+        const successMsg = isEditMode
             ? 'Booking updated successfully' + (sendEmail && participants ? '. Email notifications are being sent.' : '')
             : 'Booking submitted successfully' + (sendEmail && participants ? '. Email invitations are being sent.' : '');
-        
+
         await showPopup(successMsg, 'success');
         closeModal();
         setTimeout(loadBookings, 1500);
@@ -1134,7 +1136,7 @@ function validateDateTimeInputs() {
     const errorEl = document.getElementById('dateTimeError');
     const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
     if (!startInput || !endInput) return;
-    
+
     // Get current IST time with 5-minute margin
     const now = new Date();
     const istFormatter = new Intl.DateTimeFormat('en-US', {
@@ -1146,28 +1148,28 @@ function validateDateTimeInputs() {
         hour12: false,
         timeZone: IST_TIMEZONE
     });
-    
+
     const timeParts = istFormatter.formatToParts(now);
     const currentISTYear = parseInt(timeParts.find(p => p.type === 'year')?.value);
     const currentISTMonth = parseInt(timeParts.find(p => p.type === 'month')?.value);
     const currentISTDay = parseInt(timeParts.find(p => p.type === 'day')?.value);
     const currentISTHour = parseInt(timeParts.find(p => p.type === 'hour')?.value);
     const currentISTMinute = parseInt(timeParts.find(p => p.type === 'minute')?.value);
-    
+
     // Create current IST time and subtract 5-minute margin (allowing bookings made up to 5 minutes before current time)
     let currentIST = new Date(currentISTYear, currentISTMonth - 1, currentISTDay, currentISTHour, currentISTMinute, 0, 0);
     currentIST.setMinutes(currentIST.getMinutes() - 5);
-    
+
     const startVal = startInput.value;
     const endVal = endInput.value;
     let valid = true;
     let errorMsg = 'Selected date/time is in the past';
-    
+
     if (startVal) {
         const s = new Date(startVal);
         if (s < currentIST) valid = false;
     }
-    
+
     if (endVal && startVal) {
         const s = new Date(startVal);
         const e = new Date(endVal);
@@ -1180,7 +1182,7 @@ function validateDateTimeInputs() {
             errorMsg = 'Selected date/time is in the past';
         }
     }
-    
+
     if (endInput) endInput.min = startVal || toDateTimeLocalIST(currentIST);
     if (errorEl) {
         errorEl.style.display = valid ? 'none' : 'block';
@@ -1193,7 +1195,7 @@ function initializeDateTimeValidation() {
     const startInput = document.getElementById('startTime');
     const endInput = document.getElementById('endTime');
     if (!startInput || !endInput) return;
-    
+
     // Get current IST time with 5-minute margin
     const now = new Date();
     const istFormatter = new Intl.DateTimeFormat('en-US', {
@@ -1205,17 +1207,17 @@ function initializeDateTimeValidation() {
         hour12: false,
         timeZone: IST_TIMEZONE
     });
-    
+
     const timeParts = istFormatter.formatToParts(now);
     const currentISTYear = parseInt(timeParts.find(p => p.type === 'year')?.value);
     const currentISTMonth = parseInt(timeParts.find(p => p.type === 'month')?.value);
     const currentISTDay = parseInt(timeParts.find(p => p.type === 'day')?.value);
     const currentISTHour = parseInt(timeParts.find(p => p.type === 'hour')?.value);
     const currentISTMinute = parseInt(timeParts.find(p => p.type === 'minute')?.value);
-    
+
     let currentIST = new Date(currentISTYear, currentISTMonth - 1, currentISTDay, currentISTHour, currentISTMinute, 0, 0);
     currentIST.setMinutes(currentIST.getMinutes() - 5);
-    
+
     const nowLocal = toDateTimeLocalIST(currentIST);
     startInput.min = nowLocal;
     endInput.min = nowLocal;

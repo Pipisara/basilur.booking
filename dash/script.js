@@ -1,5 +1,5 @@
 // Configuration
-const API_URL = 'https://script.google.com/macros/s/AKfycbyCeT7yF3ZWv9LRCNywiwDpm_KqRPdQQs07WhBR8zON7BFsk-x4-RPFcCa28M3mJ_Ci/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbwzcoA-sg71P3oik8vhYyCjzIuDxefX4H7zEKa1aMwFyEy-sIXfoJ9dnPY-CoCsdyK2/exec';
 const REFRESH_INTERVAL = 60000; // 1 minute
 const CAROUSEL_AUTO_ADVANCE = 10000; // 10 seconds
 
@@ -31,23 +31,23 @@ function initializeApp() {
     // Get room key from URL parameter
     const urlParams = new URLSearchParams(window.location.search);
     currentRoomKey = urlParams.get('room') || 'A';
-    
+
     // Set room name
     document.getElementById('roomName').textContent = ROOM_NAMES[currentRoomKey] || `Room ${currentRoomKey}`;
-    
+
     // Start clock
     updateClock();
     setInterval(updateClock, 1000);
 
     // Set initial loading state
     setLoadingState();
-    
+
     // Initial load
     loadRoomSchedule();
-    
+
     // Set up auto-refresh
     refreshTimer = setInterval(loadRoomSchedule, REFRESH_INTERVAL);
-    
+
     // Attach swipe gestures
     attachSwipeGestures();
 }
@@ -59,7 +59,7 @@ function updateClock() {
     const now = new Date();
     const timeString = formatDateIST(now, 'time');
     const dateString = formatDateIST(now, 'date');
-    
+
     document.getElementById('currentTime').textContent = `${dateString} • ${timeString}`;
 }
 
@@ -70,21 +70,21 @@ async function loadRoomSchedule() {
     try {
         const url = `${API_URL}?action=getRoomSchedule&room=${currentRoomKey}`;
         const response = await fetch(url);
-        
+
         if (!response.ok) {
             throw new Error('Failed to fetch schedule');
         }
-        
+
         const data = await response.json();
-        
+
         // Update displays
         updateCurrentMeeting(data.currentMeeting);
         updateUpcomingMeetings(data.upcomingMeetings);
-        
+
         // Update last update time
         const now = new Date();
         document.getElementById('lastUpdate').textContent = formatDateIST(now, 'time-only');
-        
+
     } catch (error) {
         console.error('Error loading schedule:', error);
         displayError();
@@ -239,11 +239,11 @@ function updateUpcomingMeetings(meetings) {
     });
 
     upcomingList.innerHTML = html;
-    
+
     // Show counter
     counterDiv.style.display = 'block';
     updateCarouselCounter();
-    
+
     // Start carousel
     if (totalMeetings > 1) {
         startCarousel();
@@ -255,7 +255,7 @@ function updateUpcomingMeetings(meetings) {
 // ===========================
 function showCarouselSlide(index) {
     if (index < 0 || index >= totalMeetings) return;
-    
+
     const items = document.querySelectorAll('.upcoming-item');
     items.forEach((item, i) => {
         item.classList.remove('active', 'prev');
@@ -265,10 +265,10 @@ function showCarouselSlide(index) {
             item.classList.add('prev');
         }
     });
-    
+
     currentCarouselIndex = index;
     updateCarouselCounter();
-    
+
     // Reset timer
     stopCarousel();
     if (totalMeetings > 1) {
@@ -366,13 +366,13 @@ async function enableCamera() {
 function disableCamera() {
     const cameraContainer = document.getElementById('cameraContainer');
     const cameraFeed = document.getElementById('cameraFeed');
-    
+
     if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
         cameraStream = null;
         cameraFeed.srcObject = null;
     }
-    
+
     cameraContainer.style.display = 'none';
     console.log('Camera disabled');
 }
@@ -384,7 +384,7 @@ function setLoadingState() {
     const statusIndicator = document.getElementById('statusIndicator');
     statusIndicator.classList.add('loading');
     statusIndicator.querySelector('.status-text').textContent = 'Loading...';
-    
+
     const currentDisplay = document.getElementById('currentMeetingDisplay');
     currentDisplay.innerHTML = '<div class="loading-message">Loading current meeting...</div>';
 }
@@ -401,14 +401,14 @@ function formatDateIST(date, format) {
         hour12: true,
         weekday: 'long'
     });
-    
+
     const parts = formatter.formatToParts(date);
     const result = {};
-    
+
     parts.forEach(part => {
         result[part.type] = part.value;
     });
-    
+
     if (format === 'date') {
         return `${result.weekday}, ${result.month} ${result.day}, ${result.year}`;
     } else if (format === 'time') {
@@ -416,7 +416,7 @@ function formatDateIST(date, format) {
     } else if (format === 'time-only') {
         return `${result.hour}:${result.minute}:${result.second} ${result.dayPeriod}`;
     }
-    
+
     return formatter.format(date);
 }
 
@@ -484,7 +484,7 @@ function displayError() {
             <div class="no-meeting-subtext">Unable to load schedule</div>
         </div>
     `;
-    
+
     const upcomingList = document.getElementById('upcomingList');
     upcomingList.innerHTML = '<div class="no-upcoming">Unable to load schedule</div>';
 }
