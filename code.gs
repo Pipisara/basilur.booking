@@ -254,7 +254,7 @@ function getOrCreateBookingsSheet() {
     const headers = [
       'ID', 'Room', 'RoomKey', 'Title', 'Start', 'End', 
       'Booked By', 'Note', 'Participants', 'Email Sent',
-      'Created By', 'Updated By', 'Created At', 'Updated At'
+      'Created By', 'Updated By', 'Created At', 'Updated At', 'Calendar Event ID'
     ];
     
     sheet.appendRow(headers);
@@ -278,8 +278,21 @@ function getOrCreateBookingsSheet() {
     sheet.setColumnWidth(12, 120); // Updated By
     sheet.setColumnWidth(13, 150); // Created At
     sheet.setColumnWidth(14, 150); // Updated At
+    sheet.setColumnWidth(15, 150); // Calendar Event ID
     
     sheet.setFrozenRows(1);
+  } else {
+    // Check if new column needs to be added to existing sheet
+    if (sheet.getLastColumn() < 15) {
+      Logger.log('Adding missing "Calendar Event ID" column');
+      sheet.insertColumnAfter(14);
+      const headerCell = sheet.getRange(1, 15);
+      headerCell.setValue('Calendar Event ID');
+      headerCell.setFontWeight('bold');
+      headerCell.setBackground('#4285f4');
+      headerCell.setFontColor('#ffffff');
+      sheet.setColumnWidth(15, 150);
+    }
   }
   
   return sheet;
@@ -321,9 +334,6 @@ function getOrCreateEmailLogSheet() {
   return sheet;
 }
 
-/**
- * Create a new booking
- */
 function handleCreate(sheet, booking) {
   const now = new Date();
   const bookingId = now.getTime().toString();
@@ -331,7 +341,19 @@ function handleCreate(sheet, booking) {
   Logger.log('Creating booking: ' + bookingId + ' - ' + booking.title);
   
   const emailSent = false;
+  let calendarEventId = '';
+  let googleCalendarUrl = '';
   
+  // 1. Google Calendar Integration
+  if (booking.manualAddToCalendar === true) {
+    Logger.log('Manual add requested. Generating ID only.');
+    googleCalendarUrl = generateGoogleCalendarLink(booking);
+  } else {
+    // Auto-create on Google Calendar
+    calendarEventId = createGoogleCalendarEvent(booking) || '';
+  }
+  
+  // 2. Add to Sheet (including new Calendar Event ID column)
   sheet.appendRow([
     bookingId,
     booking.room || '',
@@ -346,13 +368,14 @@ function handleCreate(sheet, booking) {
     booking.createdBy || booking.bookedBy || '',
     '',
     formatDateAsIST(now, 'yyyy-MM-dd HH:mm:ss'),
-    ''
+    '',
+    calendarEventId // Column 15
   ]);
   
-  // Send email invitations if requested
+  // 3. Send HTML Notification Email (Branding/Notification only)
   if (booking.sendEmail && booking.participants) {
     try {
-      sendMeetingInvitation(booking, bookingId);
+      sendMeetingInvitation(booking, bookingId, false);
       
       // Update email sent status
       const data = sheet.getDataRange().getValues();
@@ -370,13 +393,20 @@ function handleCreate(sheet, booking) {
   
   Logger.log('Booking created successfully: ' + bookingId);
   
+  const response = {
+    status: 'success',
+    action: 'create',
+    id: bookingId,
+    message: 'Booking created successfully',
+    calendarEventId: calendarEventId
+  };
+  
+  if (googleCalendarUrl) {
+    response.googleCalendarUrl = googleCalendarUrl;
+  }
+  
   return ContentService
-    .createTextOutput(JSON.stringify({
-      status: 'success',
-      action: 'create',
-      id: bookingId,
-      message: 'Booking created successfully'
-    }))
+    .createTextOutput(JSON.stringify(response))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -387,43 +417,45 @@ function handleUpdate(sheet, booking) {
   const bookingId = booking.id || booking.originalId;
   
   if (!bookingId) {
-    Logger.log('Update failed: No booking ID provided');
-    return ContentService
-      .createTextOutput(JSON.stringify({
-        status: 'error',
-        message: 'Booking ID is required for updates'
-      }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Booking ID required'})).setMimeType(ContentService.MimeType.JSON);
   }
   
   const data = sheet.getDataRange().getValues();
   let rowIndex = -1;
+  let calendarEventId = '';
   
   for (let i = 1; i < data.length; i++) {
     if (data[i][0].toString() === bookingId.toString()) {
       rowIndex = i + 1;
+      calendarEventId = data[i][14] || ''; // Get existing Calendar ID
       break;
     }
   }
   
   if (rowIndex === -1) {
-    Logger.log('Update failed: Booking ' + bookingId + ' not found');
-    return ContentService
-      .createTextOutput(JSON.stringify({
-        status: 'error',
-        message: 'Booking not found'
-      }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Booking not found'})).setMimeType(ContentService.MimeType.JSON);
   }
   
-  Logger.log('Updating booking: ' + bookingId + ' at row ' + rowIndex);
+  // Update Google Calendar Event
+  if (calendarEventId) {
+    updateGoogleCalendarEvent(calendarEventId, booking);
+  } else if (!booking.manualAddToCalendar) {
+    // If no ID exists (old booking), try to create one now?
+    // User didn't strictly specify, but good practice.
+    // For now, let's just create if missing and not manual
+    calendarEventId = createGoogleCalendarEvent(booking) || '';
+  }
   
   const now = new Date();
   const existingCreatedAt = data[rowIndex - 1][12];
   const existingCreatedBy = data[rowIndex - 1][10];
   const existingEmailSent = data[rowIndex - 1][9];
   
-  sheet.getRange(rowIndex, 1, 1, 14).setValues([[
+  // Note: We retrieve 15 columns now (indexes 0-14)
+  // But we need to be careful if the sheet doesn't have 15 cols yet (creating it handles headers, but existing data rows might be short)
+  // Arrays in Apps Script extend automatically.
+  
+  sheet.getRange(rowIndex, 1, 1, 15).setValues([[
     bookingId,
     booking.room || '',
     booking.roomKey || '',
@@ -437,10 +469,11 @@ function handleUpdate(sheet, booking) {
     existingCreatedBy || '',
     booking.updatedBy || booking.submittedBy || '',
     existingCreatedAt || '',
-    formatDateAsIST(now, 'yyyy-MM-dd HH:mm:ss')
+    formatDateAsIST(now, 'yyyy-MM-dd HH:mm:ss'),
+    calendarEventId
   ]]);
   
-  // Send updated invitation if requested
+  // Send updated HTML invitation if requested
   if (booking.sendEmail && booking.participants) {
     try {
       sendMeetingInvitation(booking, bookingId, true);
@@ -450,8 +483,6 @@ function handleUpdate(sheet, booking) {
       logEmailError(bookingId, booking.title, '', 'Failed to send update', emailError.toString());
     }
   }
-  
-  Logger.log('Booking updated successfully: ' + bookingId);
   
   return ContentService
     .createTextOutput(JSON.stringify({
@@ -470,21 +501,18 @@ function handleDelete(sheet, booking) {
   const bookingId = booking.id;
   
   if (!bookingId) {
-    return ContentService
-      .createTextOutput(JSON.stringify({
-        status: 'error',
-        message: 'Booking ID is required for deletion'
-      }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Booking ID required'})).setMimeType(ContentService.MimeType.JSON);
   }
   
   const data = sheet.getDataRange().getValues();
   let rowIndex = -1;
   let bookingData = null;
+  let calendarEventId = '';
   
   for (let i = 1; i < data.length; i++) {
     if (data[i][0].toString() === bookingId.toString()) {
       rowIndex = i + 1;
+      calendarEventId = data[i][14] || '';
       bookingData = {
         title: data[i][3],
         start: data[i][4],
@@ -499,17 +527,19 @@ function handleDelete(sheet, booking) {
   }
   
   if (rowIndex === -1) {
-    return ContentService
-      .createTextOutput(JSON.stringify({
-        status: 'error',
-        message: 'Booking not found'
-      }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Booking not found'})).setMimeType(ContentService.MimeType.JSON);
   }
   
-  // Send cancellation email before deleting
+  // Delete from Google Calendar
+  if (calendarEventId) {
+    deleteGoogleCalendarEvent(calendarEventId);
+  }
+  
+  // Send cancellation email
   if (booking.sendCancellation && bookingData && bookingData.participants) {
     try {
+      // Logic: Google Calendar sends cancellation if we deleted the event and sendUpdates='all'.
+      // But we also want to send our HTML branded email.
       sendCancellationEmail(bookingData, bookingId, booking.deletedBy || 'Unknown');
     } catch (emailError) {
       Logger.log('Cancellation Email Error: ' + emailError.toString());
@@ -517,7 +547,6 @@ function handleDelete(sheet, booking) {
     }
   }
   
-  Logger.log('Deleting booking: ' + bookingId + ' at row ' + rowIndex);
   sheet.deleteRow(rowIndex);
   
   return ContentService
@@ -541,9 +570,8 @@ function sendMeetingInvitation(booking, bookingId, isUpdate) {
   
   const startDate = new Date(booking.start);
   const endDate = new Date(booking.end);
-  
-  // Format dates for display (GMT+5:30 / IST)
   const IST_TIMEZONE = 'Asia/Kolkata';
+  
   const formattedDate = Utilities.formatDate(startDate, IST_TIMEZONE, 'EEEE, MMMM dd, yyyy');
   const formattedStartTime = Utilities.formatDate(startDate, IST_TIMEZONE, 'hh:mm a');
   const formattedEndTime = Utilities.formatDate(endDate, IST_TIMEZONE, 'hh:mm a');
@@ -561,55 +589,21 @@ function sendMeetingInvitation(booking, bookingId, isUpdate) {
     .replace(/{{NOTES}}/g, booking.note || 'No additional notes')
     .replace(/{{BOOKING_ID}}/g, bookingId);
   
-  // Create iCalendar content
-  const sequence = isUpdate ? '1' : '0';
-  const icalContent = createICalendarEvent(booking, bookingId, sequence, 'REQUEST');
-  
-  // Get organizer email (use Session user or default)
   const organizerEmail = Session.getActiveUser().getEmail() || 'noreply@basilurtea.com';
+  const organizerDisplayName = booking && booking.bookedBy ? booking.bookedBy : 'Meeting Organizer';
   
-  // Send to each participant using Gmail raw MIME (no .ics attachment)
   emails.forEach(function(email) {
     try {
-      const boundary = '----=_Part_' + Utilities.getUuid();
-
-      const organizerDisplayName = booking && booking.bookedBy ? booking.bookedBy : 'Meeting Organizer';
-      const organizerEmailHeader = organizerEmail ? ('"' + organizerDisplayName + '" <' + organizerEmail + '>') : organizerEmail;
-
-      const rawLines = [];
-      rawLines.push('From: ' + organizerEmailHeader);
-      rawLines.push('To: ' + email);
-      rawLines.push('Subject: ' + subject);
-      rawLines.push('MIME-Version: 1.0');
-      rawLines.push('Content-Class: urn:content-classes:calendarmessage');
-      rawLines.push('Content-Type: multipart/alternative; boundary="' + boundary + '"');
-      rawLines.push('');
-
-      // HTML part
-      rawLines.push('--' + boundary);
-      rawLines.push('Content-Type: text/html; charset=UTF-8');
-      rawLines.push('Content-Transfer-Encoding: 7bit');
-      rawLines.push('');
-      rawLines.push(emailHtml);
-      rawLines.push('');
-
-      // Calendar part
-      rawLines.push('--' + boundary);
-      rawLines.push('Content-Type: text/calendar; method=REQUEST; charset=UTF-8');
-      rawLines.push('Content-Transfer-Encoding: 7bit');
-      rawLines.push('');
-      rawLines.push(icalContent);
-      rawLines.push('');
-
-      rawLines.push('--' + boundary + '--');
-
-      const rawMessage = rawLines.join('\r\n');
-      const encodedMessage = Utilities.base64EncodeWebSafe(rawMessage);
-
-      sendRawEmail(encodedMessage);
-
+      // Send simple HTML email
+      MailApp.sendEmail({
+        to: email,
+        subject: subject,
+        htmlBody: emailHtml,
+        name: organizerDisplayName
+      });
+      
       logEmailSuccess(bookingId, booking.title, email, subject, isUpdate ? 'Updated' : 'Scheduled');
-      Logger.log('Calendar invitation sent to: ' + email);
+      Logger.log('HTML invitation sent to: ' + email);
     } catch (error) {
       Logger.log('Failed to send email to ' + email + ': ' + error.toString());
       logEmailError(bookingId, booking.title, email, subject, error.toString());
@@ -640,51 +634,17 @@ function sendCancellationEmail(bookingData, bookingId, deletedBy) {
     .replace(/{{START_TIME}}/g, formattedStartTime)
     .replace(/{{CANCELED_BY}}/g, deletedBy)
     .replace(/{{BOOKING_ID}}/g, bookingId);
-  
-  // Create iCalendar cancellation (sequence = 2 to override previous)
-  const icalContent = createICalendarEvent(bookingData, bookingId, '2', 'CANCEL');
-  
-  // Organizer email for cancellations
-  const organizerEmail = Session.getActiveUser().getEmail() || 'noreply@basilurtea.com';
+
+  const organizerDisplayName = bookingData && bookingData.bookedBy ? bookingData.bookedBy : 'Organizer';
 
   emails.forEach(function(email) {
     try {
-      const boundary = '----=_Part_' + Utilities.getUuid();
-
-      const organizerDisplayName = bookingData && bookingData.bookedBy ? bookingData.bookedBy : 'Organizer';
-      const organizerEmailHeader = organizerEmail ? ('"' + organizerDisplayName + '" <' + organizerEmail + '>') : organizerEmail;
-
-      const rawLines = [];
-      rawLines.push('From: ' + organizerEmailHeader);
-      rawLines.push('To: ' + email);
-      rawLines.push('Subject: ' + subject);
-      rawLines.push('MIME-Version: 1.0');
-      rawLines.push('Content-Class: urn:content-classes:calendarmessage');
-      rawLines.push('Content-Type: multipart/alternative; boundary="' + boundary + '"');
-      rawLines.push('');
-
-      // HTML part
-      rawLines.push('--' + boundary);
-      rawLines.push('Content-Type: text/html; charset=UTF-8');
-      rawLines.push('Content-Transfer-Encoding: 7bit');
-      rawLines.push('');
-      rawLines.push(emailHtml);
-      rawLines.push('');
-
-      // Calendar CANCEL part
-      rawLines.push('--' + boundary);
-      rawLines.push('Content-Type: text/calendar; method=CANCEL; charset=UTF-8');
-      rawLines.push('Content-Transfer-Encoding: 7bit');
-      rawLines.push('');
-      rawLines.push(icalContent);
-      rawLines.push('');
-
-      rawLines.push('--' + boundary + '--');
-
-      const rawMessage = rawLines.join('\r\n');
-      const encodedMessage = Utilities.base64EncodeWebSafe(rawMessage);
-
-      sendRawEmail(encodedMessage);
+      MailApp.sendEmail({
+        to: email,
+        subject: subject,
+        htmlBody: emailHtml,
+        name: organizerDisplayName
+      });
 
       logEmailSuccess(bookingId, bookingData.title, email, subject, 'Canceled');
       Logger.log('Cancellation sent to: ' + email);
@@ -693,93 +653,6 @@ function sendCancellationEmail(bookingData, bookingId, deletedBy) {
       logEmailError(bookingId, bookingData.title, email, subject, error.toString());
     }
   });
-}
-
-/**
- * Create iCalendar VEVENT content
- */
-function createICalendarEvent(booking, bookingId, sequence, method) {
-  const startDate = new Date(booking.start);
-  const endDate = new Date(booking.end);
-  
-  // Format dates in UTC (yyyyMMddTHHmmssZ)
-  const formatICalDate = function(date) {
-    const year = date.getUTCFullYear();
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const hours = String(date.getUTCHours()).padStart(2, '0');
-    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-    return year + month + day + 'T' + hours + minutes + seconds + 'Z';
-  };
-  
-  const dtStart = formatICalDate(startDate);
-  const dtEnd = formatICalDate(endDate);
-  const dtStamp = formatICalDate(new Date());
-  
-  // Get organizer email and display name
-  const organizerEmail = Session.getActiveUser().getEmail() || 'systems7.basilurtea@gmail.com';
-  const organizerDisplayName = booking.bookedBy || 'Meeting Organizer';
-  
-  // Parse attendees
-  const attendees = booking.participants ? 
-    booking.participants.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; }) : [];
-  
-  // Build ATTENDEE lines
-  let attendeeLines = '';
-  attendees.forEach(function(email) {
-    attendeeLines += 'ATTENDEE;CN=' + email + ';RSVP=TRUE:mailto:' + email + '\r\n';
-  });
-  
-  // Escape special characters in text fields
-  const escapeICalText = function(text) {
-    if (!text) return '';
-    return String(text)
-      .replace(/\\/g, '\\\\')
-      .replace(/;/g, '\\;')
-      .replace(/,/g, '\\,')
-      .replace(/\n/g, '\\n');
-  };
-  
-  const summary = escapeICalText(booking.title || 'Meeting');
-  const location = escapeICalText(booking.room || '');
-  const description = escapeICalText(booking.note || '');
-  const uid = bookingId + '@basilur.booking';
-  
-  // Status based on method
-  const status = method === 'CANCEL' ? 'CANCELLED' : 'CONFIRMED';
-  
-  // Build iCalendar content
-  const ical = 
-    'BEGIN:VCALENDAR\r\n' +
-    'VERSION:2.0\r\n' +
-    'PRODID:-//Basilur Tea//Meeting Room Booking//EN\r\n' +
-    'METHOD:' + method + '\r\n' +
-    'CALSCALE:GREGORIAN\r\n' +
-    'BEGIN:VEVENT\r\n' +
-    'UID:' + uid + '\r\n' +
-    'DTSTAMP:' + dtStamp + '\r\n' +
-    'DTSTART:' + dtStart + '\r\n' +
-    'DTEND:' + dtEnd + '\r\n' +
-    'SUMMARY:' + summary + '\r\n' +
-    'LOCATION:' + location + '\r\n' +
-    'DESCRIPTION:' + description + '\r\n' +
-    'ORGANIZER;CN=' + organizerDisplayName + ':mailto:' + organizerEmail + '\r\n' +
-    attendeeLines +
-    'STATUS:' + status + '\r\n' +
-    'SEQUENCE:' + sequence + '\r\n' +
-    'PRIORITY:5\r\n' +
-    'CLASS:PUBLIC\r\n' +
-    'TRANSP:OPAQUE\r\n' +
-    'BEGIN:VALARM\r\n' +
-    'TRIGGER:-PT15M\r\n' +
-    'ACTION:DISPLAY\r\n' +
-    'DESCRIPTION:Reminder\r\n' +
-    'END:VALARM\r\n' +
-    'END:VEVENT\r\n' +
-    'END:VCALENDAR';
-  
-  return ical;
 }
 
 /**
@@ -1051,49 +924,6 @@ function getCurrentTimeIST() {
 }
 
 /**
- * Send raw RFC822 base64url encoded message.
- * Tries the Apps Script Advanced Gmail service first, then falls back to the Gmail REST API.
- * If neither is available it throws a helpful error instructing how to enable the Gmail API.
- */
-function sendRawEmail(encodedMessage) {
-  try {
-    if (typeof Gmail !== 'undefined' && Gmail.Users && Gmail.Users.Messages && Gmail.Users.Messages.send) {
-      Gmail.Users.Messages.send({ raw: encodedMessage }, 'me');
-      return;
-    }
-  } catch (e) {
-    // continue to fallback
-    Logger.log('Gmail advanced service call failed: ' + e.toString());
-  }
-
-  // Fallback: use Gmail REST API via UrlFetchApp
-  try {
-    const url = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
-    const token = ScriptApp.getOAuthToken();
-    const options = {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { Authorization: 'Bearer ' + token },
-      payload: JSON.stringify({ raw: encodedMessage }),
-      muteHttpExceptions: true
-    };
-
-    const resp = UrlFetchApp.fetch(url, options);
-    const code = resp.getResponseCode();
-    if (code >= 200 && code < 300) {
-      return;
-    }
-
-    Logger.log('Gmail REST send failed: ' + code + ' - ' + resp.getContentText());
-  } catch (e) {
-    Logger.log('Gmail REST fallback failed: ' + e.toString());
-  }
-
-  // If we reach here, neither method worked
-  throw new Error('Unable to send raw MIME email. Enable the Gmail Advanced Service (Resources → Advanced Google services) and the Gmail API in the Google Cloud Console for this project, then reauthorize the script.');
-}
-
-/**
  * Test email functionality
  */
 function testEmail() {
@@ -1136,6 +966,147 @@ function testCancellationEmail() {
     Logger.log('Test cancellation email failed: ' + error.toString());
   }
 }
+
+// ============================================================================
+// GOOGLE CALENDAR INTEGRATION
+// ============================================================================
+
+/**
+ * Create a Google Calendar Event
+ * Requires "Google Calendar API" Advanced Service
+ */
+function createGoogleCalendarEvent(booking) {
+  try {
+    const calendarId = 'primary';
+    const attendees = [];
+    
+    if (booking.participants) {
+      const parts = booking.participants.split(',');
+      parts.forEach(function(email) {
+        const trimmed = email.trim();
+        if (trimmed) {
+          attendees.push({ email: trimmed });
+        }
+      });
+    }
+
+    const event = {
+      summary: booking.title,
+      location: booking.room,
+      description: booking.note,
+      start: {
+        dateTime: booking.start,
+        timeZone: 'Asia/Kolkata'
+      },
+      end: {
+        dateTime: booking.end,
+        timeZone: 'Asia/Kolkata'
+      },
+      attendees: attendees,
+      reminders: {
+        useDefault: true
+      }
+    };
+
+    const newEvent = Calendar.Events.insert(event, calendarId, {
+      sendUpdates: 'all'
+    });
+    
+    Logger.log('Created Google Calendar Event: ' + newEvent.id);
+    return newEvent.id;
+
+  } catch (e) {
+    Logger.log('Error creating calendar event: ' + e.toString());
+    // We don't want to break the booking flow if calendar fails, so return null
+    return null;
+  }
+}
+
+/**
+ * Update a Google Calendar Event
+ */
+function updateGoogleCalendarEvent(eventId, booking) {
+  if (!eventId) return;
+
+  try {
+    const calendarId = 'primary';
+    const attendees = [];
+    
+    if (booking.participants) {
+      const parts = booking.participants.split(',');
+      parts.forEach(function(email) {
+        const trimmed = email.trim();
+        if (trimmed) {
+          attendees.push({ email: trimmed });
+        }
+      });
+    }
+
+    const event = {
+      summary: booking.title,
+      location: booking.room,
+      description: booking.note,
+      start: {
+        dateTime: booking.start,
+        timeZone: 'Asia/Kolkata'
+      },
+      end: {
+        dateTime: booking.end,
+        timeZone: 'Asia/Kolkata'
+      },
+      attendees: attendees
+    };
+
+    Calendar.Events.patch(event, calendarId, eventId, {
+      sendUpdates: 'all'
+    });
+    
+    Logger.log('Updated Google Calendar Event: ' + eventId);
+
+  } catch (e) {
+    Logger.log('Error updating calendar event: ' + e.toString());
+  }
+}
+
+/**
+ * Delete a Google Calendar Event
+ */
+function deleteGoogleCalendarEvent(eventId) {
+  if (!eventId) return;
+
+  try {
+    const calendarId = 'primary';
+    Calendar.Events.remove(calendarId, eventId, {
+      sendUpdates: 'all'
+    });
+    Logger.log('Deleted Google Calendar Event: ' + eventId);
+  } catch (e) {
+    Logger.log('Error deleting calendar event: ' + e.toString());
+  }
+}
+
+/**
+ * Generate a Manual "Add to Calendar" Link
+ */
+function generateGoogleCalendarLink(booking) {
+  // Format: https://calendar.google.com/calendar/render?action=TEMPLATE&text=...
+  
+  const formatDateForLink = function(isoStr) {
+    // Converts ISO string to YYYYMMDDTHHMMSSZ
+    var d = new Date(isoStr);
+    return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  };
+
+  const baseUrl = 'https://calendar.google.com/calendar/render?action=TEMPLATE';
+  const text = '&text=' + encodeURIComponent(booking.title || 'Meeting');
+  const details = '&details=' + encodeURIComponent(booking.note || '');
+  const location = '&location=' + encodeURIComponent(booking.room || '');
+  const dates = '&dates=' + formatDateForLink(booking.start) + '/' + formatDateForLink(booking.end);
+  const add = '&add=' + encodeURIComponent(booking.participants || ''); // This pre-fills guests
+
+  return baseUrl + text + dates + details + location + add;
+}
+
 
 // ============================================================================
 // END OF SCRIPT
