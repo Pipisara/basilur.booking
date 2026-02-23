@@ -1,5 +1,5 @@
 // Configuration
-const API_URL = 'https://script.google.com/macros/s/AKfycbzONNN8-hAiCibOsOFoyBPVInEXA30Oe_oKYu6siqd2n81FE2xm71nXj3I1wDN-YuFR/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzoSel5_i0EvHiLOcs4PxdPMHgLx3w1xizzp75oGQ4_BcpScOOLauc7oDvbDsxYJgs8/exec';
 const REFRESH_INTERVAL = 60000; // 1 minute
 const CAROUSEL_AUTO_ADVANCE = 10000; // 10 seconds
 
